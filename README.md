@@ -16,6 +16,7 @@ into what is meant to be a minimal fix.
 | `phon` | [bearcove/phon](https://github.com/bearcove/phon) | `0.2.0-rc.5` | `Def::Scalar` opaque shapes |
 | `phon-jit` | [bearcove/phon](https://github.com/bearcove/phon) | `0.2.0-rc.5` | nightly probe breaks under nix |
 | `styx-format` | [bearcove/styx](https://github.com/bearcove/styx) | `5.0.0-rc.5` | angle brackets in bare scalars |
+| `facet-core` | [facet-rs/facet](https://github.com/facet-rs/facet) | `0.50.0-rc.5` | chrono display truncates sub-second precision |
 
 ## phon — `Def::Scalar` opaque shapes
 
@@ -85,3 +86,34 @@ Strictly only `>` is fatal; quoting both is the safe superset.
 
 All three are filable against the `bearcove` repos, which are active.
 Doing so is a deliberate decision, not a chore to run unprompted.
+
+## facet-core — chrono display truncates sub-second precision
+
+**Symptom:** every timestamp on every vox RPC arrives rounded to the
+second, and an activity feed ordered by time puts a checkpoint before
+the root creation it followed.
+
+`chrono`'s types are registered as `Def::Scalar` / `UserType::Opaque`,
+so their only encode path is the `display` fn in each vtable — there is
+no structural representation for a format to fall back on. Upstream
+0.50.0-rc.5 writes the `DateTime` types with
+`to_rfc3339_opts(SecondsFormat::Secs, true)` and the naive types with
+`%Y-%m-%dT%H:%M:%S` / `%H:%M:%S`. All four drop the fraction, so every
+facet format inherits the loss: facet-json, facet-toml, and vox.
+
+It is silent and one-directional. The value round-trips without error
+and comes back rounded, which is why it survived: nothing fails, and
+two events in the same second simply stop being orderable.
+
+**Fix:** `SecondsFormat::AutoSi` for the RFC3339 types, `%.f` for the
+naive ones. Both write nothing when the fraction is zero, so a
+whole-second value formats exactly as it did before and only the
+previously-lossy case changes — existing files keep parsing, and the
+diff on stored data is empty unless precision was actually being lost.
+`NaiveDateTime`'s parse format gains `%.f` for the same reason (its
+display now emits one; `NaiveTime`'s parse already accepted it).
+
+Covered by `facet-core/tests/chrono_precision.rs`, which is its own
+test target: the crate's `main` target pulls in `type_name.rs`, whose
+`facet-testhelpers` dev-dependency the publish strips, so `main` cannot
+build from the published source at all.
