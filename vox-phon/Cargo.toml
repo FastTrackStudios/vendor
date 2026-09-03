@@ -1,0 +1,36 @@
+# Vendored vox-phon 0.10.0-rc.7 (bearcove/vox) with ONE removal:
+# `parse_schema_bytes`'s bogus post-decode check `consumed != slice.len()`.
+#
+# `phon_schema::schema_from_bytes`'s second tuple element is the
+# owned-allocation byte count charged against `DecodeLimits` (string/Vec
+# bytes it had to copy) — not a buffer position. It is unrelated to
+# `slice.len()` and will not equal it for any schema with structural
+# framing (struct/enum tags, field names, list-length headers), which is
+# every non-trivial schema. `schema_from_bytes` already guarantees full
+# consumption internally (it rejects trailing bytes before returning
+# `Ok`), so the check was both wrong and redundant — it rejected every
+# real schema exchange with "schema decode consumed N of M bytes".
+#
+# Drop the vendor once upstream removes/fixes the check (see
+# src/schema.rs `parse_schema_bytes`).
+[package]
+name = "vox-phon"
+version = "0.10.0-rc.7"
+edition = "2024"
+rust-version = "1.92"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bearcove/vox"
+description = "phon as a vox codec: encode/decode facet types through phon's typed (schema-driven) path."
+
+[lib]
+name = "vox_phon"
+path = "src/lib.rs"
+
+[dependencies]
+facet = { version = "0.50.0-rc.7", features = ["camino", "reflect"] }
+phon = "0.2.0-rc.6"
+phon-engine = "0.2.0-rc.6"
+phon-ir = "0.2.0-rc.6"
+phon-jit = "0.2.0-rc.6"
+phon-schema = "0.2.0-rc.6"
+vox-rt = "0.10.0-rc.7"
