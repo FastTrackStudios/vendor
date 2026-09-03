@@ -17,6 +17,7 @@ into what is meant to be a minimal fix.
 | `phon-jit` | [bearcove/phon](https://github.com/bearcove/phon) | `0.2.0-rc.5` | nightly probe breaks under nix |
 | `styx-format` | [bearcove/styx](https://github.com/bearcove/styx) | `5.0.0-rc.5` | angle brackets in bare scalars |
 | `facet-core` | [facet-rs/facet](https://github.com/facet-rs/facet) | `0.50.0-rc.5` | chrono display truncates sub-second precision |
+| `vox-phon` | [bearcove/vox](https://github.com/bearcove/vox) | `0.10.0-rc.7` | bogus post-decode length check aborts every real schema exchange |
 
 ## phon — `Def::Scalar` opaque shapes
 
@@ -82,10 +83,41 @@ appear in bare scalars, but `>` cannot").
 
 Strictly only `>` is fatal; quoting both is the safe superset.
 
+## vox-phon — bogus post-decode length check aborts every real schema exchange
+
+**Symptom:** any peer-to-peer schema exchange over vox fails with
+`"schema decode consumed N of M bytes"` — a `daw-proto` batch type as
+small as one enum variant already hits it (`"consumed 159 of 361
+bytes"`), so this is not an edge case, it is the common case.
+
+`parse_schema_bytes` (`src/schema.rs`) decodes each schema in the
+closure with `phon_schema::schema_from_bytes`, then rejects the result
+unless its second tuple element equals the encoded slice length. That
+element is not a buffer position — `phon_schema` 0.2.0-rc.6 changed
+`schema_from_bytes` to return `(Schema, usize)` where the `usize` is the
+owned-allocation byte count charged against the new `DecodeLimits`
+budget (string/Vec bytes it had to copy for `DecodeLimits` accounting).
+It has no relationship to the serialized length: struct/enum tags,
+field-name strings, and list-length headers all add encoded bytes
+without charging the allocation budget, so the two numbers diverge for
+every schema with any structure. `schema_from_bytes` already guarantees
+full-slice consumption itself — it rejects trailing bytes internally
+before returning `Ok` — so the check in `vox-phon` was both wrong and
+redundant.
+
+**Fix** (`src/schema.rs`, one line removed from `parse_schema_bytes`):
+drop the `if consumed != slice.len() { ... }` block; keep the
+`schema_from_bytes` call, ignoring its second element.
+
+**Upstream status:** not filed yet. This surfaced from bumping
+`architect` (which pulls `vox`) in the `daw` repo; not yet checked
+against `bearcove/vox` `main`.
+
 ## Upstreaming
 
-All three are filable against the `bearcove` repos, which are active.
-Doing so is a deliberate decision, not a chore to run unprompted.
+All are filable against the `bearcove`/`facet-rs` repos, which are
+active. Doing so is a deliberate decision, not a chore to run
+unprompted.
 
 ## facet-core — chrono display truncates sub-second precision
 
