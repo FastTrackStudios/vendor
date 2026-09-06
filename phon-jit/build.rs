@@ -153,9 +153,24 @@ fn emit_arm64_macos(out: &Path, generated: &Path) {
     // JIT rather than degrading it. `PHON_JIT_NIGHTLY_RUSTC` still wins when
     // set, so a dev shell with a real nightly takes the blessed upstream path.
     // Remove once phon-jit builds on stable natively.
-    let tailcall = if nightly_available() {
-        compile_object("rustc", &["+nightly"], src, &obj, &target, true)
-    } else {
+    // `nightly_available()` is not trustworthy here, and this is the whole
+    // reason the patch exists. It probes `rustc +nightly --version`; with no
+    // rustup on PATH — the pinned nix toolchain — plain rustc IGNORES the
+    // `+nightly` argument, exits 0, and prints "rustc 1.94.0". Detection says
+    // yes, the compile then runs on a stable compiler with no bootstrap, and
+    // `become` is rejected at PARSE time, before `#[cfg(tailcall)]` can strip
+    // it. So it is tried but never trusted: a real nightly is proven by the
+    // compile succeeding, not by the probe.
+    let mut tailcall = nightly_available()
+        && compile_object("rustc", &["+nightly"], src, &obj, &target, true);
+
+    if !tailcall {
+        // `PHON_JIT_NIGHTLY_RUSTC` is the blessed path when a dev shell
+        // provides a real nightly. Otherwise build the same tail-call
+        // stencils on the pinned stable rustc: `explicit_tail_calls` exists
+        // in 1.94, it is only gated, and RUSTC_BOOTSTRAP=1 lifts the gate —
+        // keeping the fast JIT rather than degrading to the call-based
+        // stencils, which cannot compile at all.
         let rustc = match env::var("PHON_JIT_NIGHTLY_RUSTC") {
             Ok(nightly) => nightly,
             Err(_) => {
@@ -165,8 +180,8 @@ fn emit_arm64_macos(out: &Path, generated: &Path) {
                 env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string())
             }
         };
-        compile_object(&rustc, &[], src, &obj, &target, true)
-    };
+        tailcall = compile_object(&rustc, &[], src, &obj, &target, true);
+    }
     assert!(tailcall, "rustc failed to compile the tail-call stencils");
     println!("cargo:rustc-cfg=phon_jit_tailcall");
 
