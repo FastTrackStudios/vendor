@@ -17,7 +17,7 @@
 
 use std::{env, fs, path::Path, path::PathBuf};
 
-use copypatch::extract::{Stencil, compile_object, extract_stencil};
+use copypatch::extract::{Stencil, compile_object, extract_stencil, nightly_available};
 
 /// Every stencil symbol in the object — `copypatch::extract` needs the full set
 /// to find where each stencil's code ends (the next symbol's address).
@@ -60,27 +60,71 @@ fn main() {
     // Declared here (always) so the cfg is known on every target, even those
     // where it is never set.
     println!("cargo:rustc-check-cfg=cfg(phon_jit_tailcall)");
+    println!("cargo:rustc-check-cfg=cfg(phon_jit_native)");
 
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     let generated = out.join("stencils.rs");
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    // phon-jit carries no jit feature of its own; whether its native backend
+    // compiles follows Weavy's single build-time decision (`r[machine.execution.jit-single-feature]`,
+    // read back via `links = "weavy"` + `DEP_WEAVY_JIT`) AND phon-jit's own narrower
+    // stencil support (macos-aarch64 only — it has no linux-x86_64 stencils yet, unlike
+    // Weavy's own copy-patch matrix).
+    let weavy_jit_active = env::var("DEP_WEAVY_JIT").as_deref() == Ok("1");
 
-    if target_os == "macos" && target_arch == "aarch64" {
+    if weavy_jit_active && target_os == "macos" && target_arch == "aarch64" {
+        println!("cargo:rustc-cfg=phon_jit_native");
         emit_arm64_macos(&out, &generated);
     } else {
-        fs::write(
-            &generated,
-            "pub const SMOKE: &[u8] = &[];\n\
-             pub const SCALAR: &[u8] = &[];\n\
-             pub const SCALAR_CONT: &[usize] = &[];\n\
-             pub const SEQUENCE: &[u8] = &[];\n\
-             pub const SEQUENCE_CONT: &[usize] = &[];\n\
-             pub const DONE: &[u8] = &[];\n",
-        )
-        .unwrap();
+        emit_empty(&generated);
     }
+}
+
+fn emit_empty(generated: &Path) {
+    let names = [
+        "SMOKE",
+        "SCALAR",
+        "SCALAR_RUN",
+        "SEQUENCE",
+        "BYTES",
+        "BORROW",
+        "OPTION",
+        "RESULT",
+        "POINTER",
+        "OPAQUE",
+        "DYNAMIC",
+        "CALLBLOCK",
+        "SET",
+        "MAP",
+        "ENUM",
+        "DEFAULT",
+        "SKIPWIRE",
+        "DONE",
+        "SCALAR_ENC",
+        "SCALAR_RUN_ENC",
+        "SEQUENCE_ENC",
+        "BYTES_ENC",
+        "OPTION_ENC",
+        "RESULT_ENC",
+        "POINTER_ENC",
+        "OPAQUE_ENC",
+        "DYNAMIC_ENC",
+        "CALLBLOCK_ENC",
+        "SET_ENC",
+        "MAP_ENC",
+        "ENUM_ENC",
+        "DONE_ENC",
+    ];
+    let mut s = String::new();
+    for name in names {
+        s.push_str(&format!("pub const {name}: &[u8] = &[];\n"));
+        if name != "SMOKE" && name != "DONE" && name != "DONE_ENC" {
+            s.push_str(&format!("pub const {name}_CONT: &[usize] = &[];\n"));
+        }
+    }
+    fs::write(generated, s).unwrap();
 }
 
 fn emit_arm64_macos(out: &Path, generated: &Path) {
@@ -92,33 +136,39 @@ fn emit_arm64_macos(out: &Path, generated: &Path) {
     let obj = out.join("stencils.o");
     let src = Path::new("stencils/stencils.rs");
 
-    // FTS vendor patch: compile the tail-call stencils on the pinned STABLE
-    // rustc 1.94 via RUSTC_BOOTSTRAP=1. Upstream picks nightly-vs-stable from
-    // `rustc +nightly` availability, but the pinned nix toolchain has no rustup
-    // nightly — and the "stable, call-based" fallback can't even compile,
-    // because `become` is PARSE-gated (rejected before `#[cfg(tailcall)]` can
-    // strip it). The `explicit_tail_calls` feature does exist in 1.94, so
-    // RUSTC_BOOTSTRAP lets the real tail-call stencils build (keeping the fast
-    // JIT, not degrading it). Remove once phon-jit builds on stable natively.
-    // Prefer the pinned nightly rustc the FTS flake provides
-    // (PHON_JIT_NIGHTLY_RUSTC) — the blessed path, the same real nightly
-    // upstream Vox uses for these stencils. Outside the dev shell (no nightly),
-    // fall back to the pinned stable rustc with RUSTC_BOOTSTRAP=1, which enables
-    // the same explicit_tail_calls feature 1.94's compiler already carries.
-    let rustc = match env::var("PHON_JIT_NIGHTLY_RUSTC") {
-        Ok(nightly) => nightly,
-        Err(_) => {
-            // SAFETY: a build script runs single-threaded before any child spawns.
-            unsafe { env::set_var("RUSTC_BOOTSTRAP", "1") };
-            env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string())
-        }
+    // FTS vendor patch: build the tail-call stencils on the pinned STABLE
+    // rustc via RUSTC_BOOTSTRAP=1.
+    //
+    // Upstream picks nightly-vs-stable from `rustc +nightly` being available,
+    // and the pinned nix toolchain has no rustup nightly. That would be fine
+    // if the stable fallback worked — but it does not: `become` is
+    // PARSE-gated, so `stencils.rs` is rejected before `#[cfg(tailcall)]` can
+    // strip it, and the build dies with four `error[E0658]: become expression
+    // is experimental`. Apple Silicon only; every other target emits an empty
+    // stencil table and never compiles this file at all, which is why Linux
+    // CI never saw it.
+    //
+    // `explicit_tail_calls` does exist in the pinned 1.94 compiler, so
+    // RUSTC_BOOTSTRAP=1 builds the real tail-call stencils — keeping the fast
+    // JIT rather than degrading it. `PHON_JIT_NIGHTLY_RUSTC` still wins when
+    // set, so a dev shell with a real nightly takes the blessed upstream path.
+    // Remove once phon-jit builds on stable natively.
+    let tailcall = if nightly_available() {
+        compile_object("rustc", &["+nightly"], src, &obj, &target, true)
+    } else {
+        let rustc = match env::var("PHON_JIT_NIGHTLY_RUSTC") {
+            Ok(nightly) => nightly,
+            Err(_) => {
+                // SAFETY: a build script is single-threaded before it spawns
+                // any child process.
+                unsafe { env::set_var("RUSTC_BOOTSTRAP", "1") };
+                env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string())
+            }
+        };
+        compile_object(&rustc, &[], src, &obj, &target, true)
     };
-    assert!(
-        compile_object(&rustc, &[], src, &obj, &target, true),
-        "rustc failed to compile tail-call stencils"
-    );
+    assert!(tailcall, "rustc failed to compile the tail-call stencils");
     println!("cargo:rustc-cfg=phon_jit_tailcall");
-    let tailcall = true;
 
     let bytes = fs::read(&obj).unwrap();
     let get = |symbol: &str, cont: &str| extract_stencil(&bytes, SYMBOLS, symbol, cont);

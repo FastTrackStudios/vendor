@@ -23,7 +23,7 @@ autobenches = false
 description = "phon's optional copy-and-patch JIT: lowers the IR to machine code via rustc/LLVM stencils."
 readme = false
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/facet-rs/facet"
+repository = "https://github.com/bearcove/phon"
 
 [package.metadata."docs.rs"]
 rustdoc-args = [
@@ -40,18 +40,14 @@ name = "bench"
 path = "examples/bench.rs"
 
 [dependencies.phon-ir]
-version = "0.2.0-rc.5"
+version = "0.2.0-rc.7"
 
 [dependencies.phon-schema]
-version = "0.2.0-rc.5"
+version = "0.2.0-rc.6"
 
 [dependencies.weavy]
 version = "0.2.3-rc.0"
-features = ["jit"]
-
-[dependencies.copypatch]
-version = "0.2.0-rc.4"
 
 [build-dependencies.copypatch]
-version = "0.2.0-rc.4"
+version = "0.2.0-rc.5"
 features = ["build"]
