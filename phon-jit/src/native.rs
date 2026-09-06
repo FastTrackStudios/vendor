@@ -22,7 +22,8 @@ use phon_ir::ir::{Lowered, MemOp, MemProgram, SkipOp};
 use phon_schema::bytes::Reader;
 use phon_schema::{DecodeError, SchemaId, Value, read_value, write_value};
 
-use weavy::jit::{Chain, ExecBuf, NativeProgram, StencilLayout};
+use copypatch::ExecBuf;
+use weavy::jit::{Chain, NativeProgram, StencilLayout};
 
 use crate::stencils::{
     BORROW, BORROW_CONT, BYTES, BYTES_CONT, BYTES_ENC, BYTES_ENC_CONT, CALLBLOCK, CALLBLOCK_CONT,
@@ -35,6 +36,13 @@ use crate::stencils::{
     SEQUENCE_CONT, SEQUENCE_ENC, SEQUENCE_ENC_CONT, SET, SET_CONT, SET_ENC, SET_ENC_CONT, SKIPWIRE,
     SKIPWIRE_CONT,
 };
+
+/// Whether phon-jit's native backend is actually usable on this build: Weavy's
+/// copy-patch runtime is active AND phon-jit's own stencils were extracted.
+#[must_use]
+pub fn available() -> bool {
+    weavy::jit::NATIVE_COPY_PATCH_AVAILABLE && !crate::stencils::SCALAR.is_empty()
+}
 
 /// Load the smoke stencil into JIT memory and run it: `x * 3 + 1`, computed by
 /// rustc-emitted machine code executing from a `MAP_JIT` page. A self-test that
