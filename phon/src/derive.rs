@@ -284,7 +284,7 @@ impl Builder {
         let key = self.protos.len();
         self.by_shape.insert(ptr, key);
         self.protos.push(Schema {
-            id: SchemaId(key as u64),
+            id: SchemaId::from_raw(key as u64),
             type_params: Vec::new(),
             kind: SchemaKind::Dynamic, // placeholder, replaced once fields resolve
         });
@@ -338,7 +338,7 @@ impl Builder {
         // A self-describing dynamic `Value` field.
         if is_dynamic_value(shape) {
             let key = self.intern_dynamic(shape)?;
-            return Ok(SchemaRef::concrete(SchemaId(key as u64)));
+            return Ok(SchemaRef::concrete(SchemaId::from_raw(key as u64)));
         }
         if is_string(shape) {
             return Ok(SchemaRef::concrete(primitive_id(Primitive::String)));
@@ -358,28 +358,28 @@ impl Builder {
             Ok(SchemaRef::concrete(primitive_id(p)))
         } else if is_struct(shape) {
             let key = self.intern(shape)?;
-            Ok(SchemaRef::concrete(SchemaId(key as u64)))
+            Ok(SchemaRef::concrete(SchemaId::from_raw(key as u64)))
         } else if let Some(list_def) = list_def(shape) {
             let key = self.intern_list(list_def)?;
-            Ok(SchemaRef::concrete(SchemaId(key as u64)))
+            Ok(SchemaRef::concrete(SchemaId::from_raw(key as u64)))
         } else if let Some(array_def) = array_def(shape) {
             let key = self.intern_array(array_def)?;
-            Ok(SchemaRef::concrete(SchemaId(key as u64)))
+            Ok(SchemaRef::concrete(SchemaId::from_raw(key as u64)))
         } else if let Some(set_def) = set_def(shape) {
             let key = self.intern_set(set_def)?;
-            Ok(SchemaRef::concrete(SchemaId(key as u64)))
+            Ok(SchemaRef::concrete(SchemaId::from_raw(key as u64)))
         } else if let Some(opt) = option_def(shape) {
             let key = self.intern_option(opt)?;
-            Ok(SchemaRef::concrete(SchemaId(key as u64)))
+            Ok(SchemaRef::concrete(SchemaId::from_raw(key as u64)))
         } else if let Some(map_def) = map_def(shape) {
             let key = self.intern_map(map_def)?;
-            Ok(SchemaRef::concrete(SchemaId(key as u64)))
+            Ok(SchemaRef::concrete(SchemaId::from_raw(key as u64)))
         } else if let Some(rd) = result_def(shape) {
             let key = self.intern_result(rd, shape)?;
-            Ok(SchemaRef::concrete(SchemaId(key as u64)))
+            Ok(SchemaRef::concrete(SchemaId::from_raw(key as u64)))
         } else if let Some(et) = enum_type(shape) {
             let key = self.intern_enum(shape, et)?;
-            Ok(SchemaRef::concrete(SchemaId(key as u64)))
+            Ok(SchemaRef::concrete(SchemaId::from_raw(key as u64)))
         } else if display_scalar(shape) {
             // A parse/display opaque scalar (Uuid, chrono, url, …): a
             // `Primitive::Bytes` run carrying the `Display` string.
@@ -405,7 +405,7 @@ impl Builder {
         let key = self.protos.len();
         self.by_shape.insert(ptr, key);
         self.protos.push(Schema {
-            id: SchemaId(key as u64),
+            id: SchemaId::from_raw(key as u64),
             type_params: Vec::new(),
             kind: SchemaKind::List { element },
         });
@@ -424,7 +424,7 @@ impl Builder {
         let key = self.protos.len();
         self.by_shape.insert(ptr, key);
         self.protos.push(Schema {
-            id: SchemaId(key as u64),
+            id: SchemaId::from_raw(key as u64),
             type_params: Vec::new(),
             kind: SchemaKind::Array {
                 element,
@@ -445,7 +445,7 @@ impl Builder {
         let key = self.protos.len();
         self.by_shape.insert(ptr, key);
         self.protos.push(Schema {
-            id: SchemaId(key as u64),
+            id: SchemaId::from_raw(key as u64),
             type_params: Vec::new(),
             kind: SchemaKind::Set { element },
         });
@@ -463,7 +463,7 @@ impl Builder {
         let key = self.protos.len();
         self.by_shape.insert(ptr, key);
         self.protos.push(Schema {
-            id: SchemaId(key as u64),
+            id: SchemaId::from_raw(key as u64),
             type_params: Vec::new(),
             kind: SchemaKind::Option { element },
         });
@@ -484,7 +484,7 @@ impl Builder {
         let slot = self.protos.len();
         self.by_shape.insert(ptr, slot);
         self.protos.push(Schema {
-            id: SchemaId(slot as u64),
+            id: SchemaId::from_raw(slot as u64),
             type_params: Vec::new(),
             kind: SchemaKind::Map { key, value },
         });
@@ -506,7 +506,7 @@ impl Builder {
         let key = self.protos.len();
         self.by_shape.insert(ptr, key);
         self.protos.push(Schema {
-            id: SchemaId(key as u64),
+            id: SchemaId::from_raw(key as u64),
             type_params: Vec::new(),
             kind: SchemaKind::Dynamic, // placeholder until arms resolve
         });
@@ -541,7 +541,7 @@ impl Builder {
         let key = self.protos.len();
         self.by_shape.insert(ptr, key);
         self.protos.push(Schema {
-            id: SchemaId(key as u64),
+            id: SchemaId::from_raw(key as u64),
             type_params: Vec::new(),
             kind: SchemaKind::Dynamic,
         });
@@ -569,7 +569,7 @@ impl Builder {
         let key = self.protos.len();
         self.by_shape.insert(ptr, key);
         self.protos.push(Schema {
-            id: SchemaId(key as u64),
+            id: SchemaId::from_raw(key as u64),
             type_params: Vec::new(),
             kind: SchemaKind::Dynamic, // placeholder until variants resolve
         });
@@ -2959,7 +2959,7 @@ mod tests {
 
     #[test]
     // r[verify exec.jit-optional]
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     fn derived_fixed_array_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
 
@@ -3151,7 +3151,7 @@ mod tests {
         assert_eq!(unsafe { slot.assume_init() }, inner);
     }
 
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     // r[verify descriptors.thunk-binding]
     // r[verify exec.jit-optional]
@@ -3300,7 +3300,7 @@ mod tests {
     // r[verify exec.jit-optional]
     // r[verify ir.stencils]
     // r[verify ir.inlining]
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_recursive_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -3681,7 +3681,7 @@ mod tests {
     // The borrowed leaves through the *JIT*: derive -> lower -> NativeDecode. The
     // interpreter is the oracle. The decoded `&str`/`&[u8]` must still point INTO
     // the input buffer (zero-copy), and the JIT must reject invalid UTF-8.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_borrowed_jit_matches_interpreter_and_is_zero_copy() {
         use phon_jit::native::NativeDecode;
@@ -3722,7 +3722,7 @@ mod tests {
         // Both decoded values borrow `wire`, kept alive through their last use above.
     }
 
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_borrowed_jit_rejects_invalid_utf8() {
         use phon_jit::native::NativeDecode;
@@ -3748,7 +3748,7 @@ mod tests {
     // The String bridge through the *JIT*: derive -> lower -> NativeEncode/Decode.
     // This exercises the real `validate_utf8` thunk the lowering installs, flowing
     // through the copy-and-patch stencil as an indirect call.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_string_field_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -3784,7 +3784,7 @@ mod tests {
         assert_eq!(back.id, v.id);
     }
 
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_string_field_jit_rejects_invalid_utf8() {
         use phon_jit::native::NativeDecode;
@@ -4032,7 +4032,7 @@ mod tests {
     // The `Option<u32>` bridge through the *JIT*: derive -> lower ->
     // NativeEncode/Decode. JIT encode == interpreter encode (byte-identical), and
     // JIT decode round-trips, for both presence arms.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_option_u32_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -4062,7 +4062,7 @@ mod tests {
 
     // `Option<String>` through the JIT: the some-arm builds a heap `String` into
     // the engine scratch buffer, then `init_some` moves it into the `Option`.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_option_string_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -4100,7 +4100,7 @@ mod tests {
     // The `#[repr(u8)]` enum bridge through the JIT, all three variant shapes
     // (unit, scalar payload, struct payload): JIT encode == interpreter encode and
     // JIT decode round-trips.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_enum_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -4127,7 +4127,7 @@ mod tests {
     }
 
     // The JIT must REJECT a hostile enum wire index, never produce a value.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_enum_jit_rejects_bad_variant_index() {
         use phon_jit::native::NativeDecode;
@@ -4152,7 +4152,7 @@ mod tests {
     }
 
     // The JIT must REJECT a hostile `Option` presence byte, never produce a value.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_option_jit_rejects_invalid_presence() {
         use phon_jit::native::NativeDecode;
@@ -4368,7 +4368,7 @@ mod tests {
 
     // The map bridge through the *JIT*: JIT encode == interpreter encode
     // (byte-identical) and JIT decode round-trips, for both map fields.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_map_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -4410,7 +4410,7 @@ mod tests {
 
     // The empty-map case through the JIT (count 0, no entries, no allocation),
     // byte-identical to the interpreter and round-tripped.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_map_jit_empty_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -4908,13 +4908,13 @@ mod tests {
     // `MemOp::Default` stencil (reader-only `#[facet(default)]` fields) added to the
     // JIT here, plus reorder / enum add+remove / nested struct compat.
 
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     use phon_jit::native::NativeDecode;
 
     /// Decode `bytes` against `program` with BOTH engines into separate reader-typed
     /// slots; returns `(jit, interp)`. The two must be field-equal — the interpreter
     /// is the oracle for the JIT.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     fn decode_both<R>(program: &phon_ir::Lowered, bytes: &[u8]) -> (R, R) {
         let jit = NativeDecode::compile(&program.program);
         let mut jit_slot = std::mem::MaybeUninit::<R>::uninit();
@@ -4931,7 +4931,7 @@ mod tests {
 
     /// 1. Field reorder: the JIT decodes reordered scalars into the reader's layout,
     ///    agreeing with the interpreter and the known values.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn compat_jit_field_reorder_is_transparent() {
         let w = of::<ReorderW>().unwrap();
@@ -4950,7 +4950,7 @@ mod tests {
     /// 2. Writer-only field: the JIT runs the `MemOp::SkipWire` stencil to consume
     ///    the writer's `String` field, writing nothing for it, and agrees with the
     ///    interpreter.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn compat_jit_writer_only_field_is_skipped() {
         let w = of::<SkipW>().unwrap();
@@ -4978,7 +4978,7 @@ mod tests {
     /// 3a. Reader-only `#[facet(default)]` field: the JIT runs the `MemOp::Default`
     ///     stencil (calling the field's default thunk, no wire read) and agrees with
     ///     the interpreter.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn compat_jit_reader_only_field_defaults() {
         let w = of::<DefaultW>().unwrap();
@@ -5000,7 +5000,7 @@ mod tests {
 
     /// 3b. A custom default expression on the reader-only field: the `MemOp::Default`
     ///     thunk writes the custom value (0xABCD), matching the interpreter.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn compat_jit_reader_only_field_with_custom_default() {
         #[derive(Facet)]
@@ -5029,7 +5029,7 @@ mod tests {
     /// 3c. A reader-only `Option<T>` field defaults to `None` without an explicit
     ///     `#[facet(default)]`, and the JIT runs the same reader-default op as the
     ///     interpreter.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn compat_jit_reader_only_option_field_defaults_to_none() {
         let w = of::<DefaultW>().unwrap();
@@ -5052,7 +5052,7 @@ mod tests {
     /// 4a. Enum variant added on the reader: the JIT decodes the writer's A and
     ///     B(42) into the wider reader enum, agreeing with the interpreter (compared
     ///     directly via the reader enum's `PartialEq`).
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn compat_jit_enum_variant_added_reads_fine() {
         let w = of::<EnumW>().unwrap();
@@ -5072,7 +5072,7 @@ mod tests {
     ///     is a decode error in the JIT (an unmatched wire index, since the JIT enum
     ///     stencil carries no matching variant), while the surviving variant A still
     ///     decodes and agrees with the interpreter.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn compat_jit_enum_variant_removed_rejects_b_reads_a() {
         let w = of::<EnumW>().unwrap();
@@ -5102,7 +5102,7 @@ mod tests {
     /// 5. Nested struct compat: the inner struct gains a reader-only `#[facet(default)]`
     ///    `bool` field. The JIT runs the nested `MemOp::Default` stencil and agrees
     ///    with the interpreter on every field.
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn compat_jit_nested_struct_with_reader_only_field() {
         let w = of::<OuterW>().unwrap();
@@ -5177,7 +5177,7 @@ mod tests {
         assert_eq!(back.tag, v.tag);
     }
 
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_zst_seq_jit_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -5297,7 +5297,7 @@ mod tests {
 
     // r[verify exec.jit-optional]
     // r[verify ir.stencils]
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_result_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -5428,7 +5428,7 @@ mod tests {
     // r[verify exec.jit-optional]
     // r[verify ir.stencils]
     // r[verify ir.memory]
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_dynamic_value_field_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};
@@ -5752,7 +5752,7 @@ mod tests {
     // r[verify exec.jit-optional]
     // r[verify ir.stencils]
     // r[verify ir.memory]
-    #[cfg(all(feature = "jit", target_os = "macos", target_arch = "aarch64"))]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn derived_opaque_field_jit_matches_interpreter_and_roundtrips() {
         use phon_jit::native::{NativeDecode, NativeEncode};

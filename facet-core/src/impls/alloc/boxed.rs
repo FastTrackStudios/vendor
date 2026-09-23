@@ -48,7 +48,7 @@ unsafe impl<'a, T: Facet<'a>> Facet<'a> for Box<T> {
     const SHAPE: &'static crate::Shape = &const {
         const fn build_type_name<'a, T: Facet<'a>>() -> TypeNameFn {
             fn type_name_impl<'a, T: Facet<'a>>(
-                _shape: &'static crate::Shape,
+                _shape: &crate::Shape,
                 f: &mut core::fmt::Formatter<'_>,
                 opts: TypeNameOpts,
             ) -> core::fmt::Result {
@@ -200,7 +200,7 @@ static BOX_STR_TYPE_OPS: TypeOpsIndirect = TypeOpsIndirect {
 unsafe impl<'a> Facet<'a> for Box<str> {
     const SHAPE: &'static crate::Shape = &const {
         fn type_name_box_str(
-            _shape: &'static crate::Shape,
+            _shape: &crate::Shape,
             f: &mut core::fmt::Formatter<'_>,
             opts: TypeNameOpts,
         ) -> core::fmt::Result {
@@ -245,7 +245,7 @@ unsafe impl<'a> Facet<'a> for Box<str> {
 unsafe impl<'a, U: Facet<'a>> Facet<'a> for Box<[U]> {
     const SHAPE: &'static crate::Shape = &const {
         fn type_name_box_slice<'a, U: Facet<'a>>(
-            _shape: &'static crate::Shape,
+            _shape: &crate::Shape,
             f: &mut core::fmt::Formatter<'_>,
             opts: TypeNameOpts,
         ) -> core::fmt::Result {
@@ -302,6 +302,12 @@ unsafe impl<'a, U: Facet<'a>> Facet<'a> for Box<[U]> {
                 name: "T",
                 shape: <[U]>::SHAPE,
             }])
+            // `Box<[U]>` propagates `U`'s variance, exactly like `Box<T>` above.
+            // This arm is a separate impl and was missing the declaration.
+            .variance(VarianceDesc {
+                base: Variance::Bivariant,
+                deps: &const { [VarianceDep::covariant(U::SHAPE)] },
+            })
             .build()
     };
 }

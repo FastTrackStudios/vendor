@@ -17,7 +17,7 @@ use crate::{
 // ============================================================================
 
 fn type_name_mutex<'a, T: Facet<'a>>(
-    _shape: &'static Shape,
+    _shape: &Shape,
     f: &mut core::fmt::Formatter<'_>,
     opts: TypeNameOpts,
 ) -> core::fmt::Result {
@@ -130,7 +130,7 @@ unsafe impl<'a, R: RawMutex + 'a, T: Facet<'a>> Facet<'a> for Mutex<R, T> {
 // ============================================================================
 
 fn type_name_rwlock<'a, T: Facet<'a>>(
-    _shape: &'static Shape,
+    _shape: &Shape,
     f: &mut core::fmt::Formatter<'_>,
     opts: TypeNameOpts,
 ) -> core::fmt::Result {
@@ -275,7 +275,7 @@ unsafe impl<'a, R: RawRwLock + 'a, T: Facet<'a>> Facet<'a> for RwLock<R, T> {
 // ============================================================================
 
 fn type_name_mutex_guard<'a, T: Facet<'a>>(
-    _shape: &'static Shape,
+    _shape: &Shape,
     f: &mut core::fmt::Formatter<'_>,
     opts: TypeNameOpts,
 ) -> core::fmt::Result {
@@ -341,9 +341,11 @@ unsafe impl<'a, R: RawMutex + 'a, T: Facet<'a>> Facet<'a> for MutexGuard<'a, R, 
                 shape: T::SHAPE,
             }])
             .inner(T::SHAPE)
-            // MutexGuard<T> is invariant w.r.t. T (provides mutable access)
+            // `MutexGuard<'a, R, T>` holds `&'a Mutex<R, T>`, so the base is
+            // `Covariant` (from `'a`) — NOT `Bivariant`. Invariant w.r.t. `T`
+            // because it hands out mutable access.
             .variance(VarianceDesc {
-                base: Variance::Bivariant,
+                base: Variance::Covariant,
                 deps: &const { [VarianceDep::invariant(T::SHAPE)] },
             })
             .build()
@@ -355,7 +357,7 @@ unsafe impl<'a, R: RawMutex + 'a, T: Facet<'a>> Facet<'a> for MutexGuard<'a, R, 
 // ============================================================================
 
 fn type_name_rwlock_read_guard<'a, T: Facet<'a>>(
-    _shape: &'static Shape,
+    _shape: &Shape,
     f: &mut core::fmt::Formatter<'_>,
     opts: TypeNameOpts,
 ) -> core::fmt::Result {
@@ -423,9 +425,11 @@ unsafe impl<'a, R: RawRwLock + 'a, T: Facet<'a>> Facet<'a> for RwLockReadGuard<'
                 shape: T::SHAPE,
             }])
             .inner(T::SHAPE)
-            // RwLockReadGuard<T> is covariant w.r.t. T (only provides shared access)
+            // `RwLockReadGuard<'a, R, T>` holds `&'a RwLock<R, T>`, so the base is
+            // `Covariant` (from `'a`) — NOT `Bivariant`. Covariant w.r.t. `T`
+            // because it only provides shared access.
             .variance(VarianceDesc {
-                base: Variance::Bivariant,
+                base: Variance::Covariant,
                 deps: &const { [VarianceDep::covariant(T::SHAPE)] },
             })
             .build()
@@ -437,7 +441,7 @@ unsafe impl<'a, R: RawRwLock + 'a, T: Facet<'a>> Facet<'a> for RwLockReadGuard<'
 // ============================================================================
 
 fn type_name_rwlock_write_guard<'a, T: Facet<'a>>(
-    _shape: &'static Shape,
+    _shape: &Shape,
     f: &mut core::fmt::Formatter<'_>,
     opts: TypeNameOpts,
 ) -> core::fmt::Result {
@@ -505,9 +509,11 @@ unsafe impl<'a, R: RawRwLock + 'a, T: Facet<'a>> Facet<'a> for RwLockWriteGuard<
                 shape: T::SHAPE,
             }])
             .inner(T::SHAPE)
-            // RwLockWriteGuard<T> is invariant w.r.t. T (provides mutable access)
+            // `RwLockWriteGuard<'a, R, T>` holds `&'a RwLock<R, T>`, so the base is
+            // `Covariant` (from `'a`) — NOT `Bivariant`. Invariant w.r.t. `T`
+            // because it hands out mutable access.
             .variance(VarianceDesc {
-                base: Variance::Bivariant,
+                base: Variance::Covariant,
                 deps: &const { [VarianceDep::invariant(T::SHAPE)] },
             })
             .build()

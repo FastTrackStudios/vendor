@@ -1,4 +1,4 @@
-# Vendored facet-core 0.50.0-rc.5 (facet-rs/facet) with ONE change:
+# Vendored facet-core 0.50.0-rc.7 (facet-rs/facet) with ONE change:
 # chrono's display fns no longer truncate sub-second precision.
 #
 # Upstream formats `DateTime<*>` with `SecondsFormat::Secs` and the
@@ -28,7 +28,7 @@
 edition = "2024"
 rust-version = "1.92"
 name = "facet-core"
-version = "0.50.0-rc.5"
+version = "0.50.0-rc.7"
 build = "build.rs"
 autolib = false
 autobins = false
@@ -67,6 +67,10 @@ rustdoc-args = [
 [features]
 alloc = []
 auto-traits = []
+bstr = [
+    "alloc",
+    "dep:bstr",
+]
 bytes = [
     "alloc",
     "dep:bytes",
@@ -88,7 +92,10 @@ compact_str = [
     "alloc",
     "dep:compact_str",
 ]
-default = ["std"]
+default = [
+    "std",
+    "taxon",
+]
 fn-ptr = []
 iddqd = [
     "alloc",
@@ -140,6 +147,10 @@ std = [
     "alloc",
     "iddqd?/std",
 ]
+taxon = [
+    "alloc",
+    "dep:taxon",
+]
 tendril = [
     "alloc",
     "dep:tendril",
@@ -181,6 +192,21 @@ path = "tests/main.rs"
 [[test]]
 name = "chrono_precision"
 path = "tests/chrono_precision.rs"
+
+[[test]]
+name = "repr_affinity"
+path = "tests/repr_affinity.rs"
+
+[[test]]
+name = "taxon_bridge"
+path = "tests/taxon_bridge.rs"
+required-features = ["taxon"]
+
+[dependencies.bstr]
+version = "^1.12.3"
+features = ["alloc"]
+optional = true
+default-features = false
 
 [dependencies.bytes]
 version = "^1.11.0"
@@ -275,6 +301,10 @@ default-features = false
 
 [dependencies.stable_deref_trait]
 version = "1.2.1"
+optional = true
+
+[dependencies.taxon]
+version = "0.2.0-rc.5"
 optional = true
 
 [dependencies.tendril]

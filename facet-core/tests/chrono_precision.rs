@@ -5,7 +5,7 @@
 //! *every* facet format writes — JSON, TOML, and any binary format built
 //! on the same reflection.
 //!
-//! Upstream 0.50.0-rc.5 formatted the `DateTime` types with
+//! Upstream 0.50.0-rc.5 through rc.7 format the `DateTime` types with
 //! `SecondsFormat::Secs` and the naive types with `%H:%M:%S`, both of
 //! which drop the fraction. That is a silent, one-directional loss: the
 //! value round-trips without error and comes back rounded, so anything

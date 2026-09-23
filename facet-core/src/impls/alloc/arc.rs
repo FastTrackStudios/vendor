@@ -13,7 +13,7 @@ use crate::{
 
 // Helper functions to create type_name formatters
 fn type_name_arc<'a, T: Facet<'a>>(
-    _shape: &'static crate::Shape,
+    _shape: &crate::Shape,
     f: &mut core::fmt::Formatter<'_>,
     opts: TypeNameOpts,
 ) -> core::fmt::Result {
@@ -29,7 +29,7 @@ fn type_name_arc<'a, T: Facet<'a>>(
 }
 
 fn type_name_weak<'a, T: Facet<'a>>(
-    _shape: &'static crate::Shape,
+    _shape: &crate::Shape,
     f: &mut core::fmt::Formatter<'_>,
     opts: TypeNameOpts,
 ) -> core::fmt::Result {
@@ -247,7 +247,7 @@ static ARC_STR_TYPE_OPS: TypeOpsIndirect = TypeOpsIndirect {
 unsafe impl<'a> Facet<'a> for Arc<str> {
     const SHAPE: &'static crate::Shape = &const {
         fn type_name_arc_str(
-            _shape: &'static crate::Shape,
+            _shape: &crate::Shape,
             f: &mut core::fmt::Formatter<'_>,
             opts: TypeNameOpts,
         ) -> core::fmt::Result {
@@ -305,7 +305,7 @@ unsafe fn weak_slice_drop<U>(ox: OxPtrMut) {
 unsafe impl<'a, U: Facet<'a>> Facet<'a> for Arc<[U]> {
     const SHAPE: &'static crate::Shape = &const {
         fn type_name_arc_slice<'a, U: Facet<'a>>(
-            _shape: &'static crate::Shape,
+            _shape: &crate::Shape,
             f: &mut core::fmt::Formatter<'_>,
             opts: TypeNameOpts,
         ) -> core::fmt::Result {
@@ -363,6 +363,12 @@ unsafe impl<'a, U: Facet<'a>> Facet<'a> for Arc<[U]> {
                 name: "T",
                 shape: <[U]>::SHAPE,
             }])
+            // `Arc<[U]>` propagates `U`'s variance, exactly like `Arc<T>` above.
+            // This arm is a separate impl and was missing the declaration.
+            .variance(VarianceDesc {
+                base: Variance::Bivariant,
+                deps: &const { [VarianceDep::covariant(U::SHAPE)] },
+            })
             .build()
     };
 }
@@ -452,7 +458,7 @@ static WEAK_VTABLE: VTableIndirect = VTableIndirect {
 unsafe impl<'a> Facet<'a> for Weak<str> {
     const SHAPE: &'static crate::Shape = &const {
         fn type_name_weak_str(
-            _shape: &'static crate::Shape,
+            _shape: &crate::Shape,
             f: &mut core::fmt::Formatter<'_>,
             opts: TypeNameOpts,
         ) -> core::fmt::Result {
@@ -500,7 +506,7 @@ unsafe impl<'a> Facet<'a> for Weak<str> {
 unsafe impl<'a, U: Facet<'a>> Facet<'a> for Weak<[U]> {
     const SHAPE: &'static crate::Shape = &const {
         fn type_name_weak_slice<'a, U: Facet<'a>>(
-            _shape: &'static crate::Shape,
+            _shape: &crate::Shape,
             f: &mut core::fmt::Formatter<'_>,
             opts: TypeNameOpts,
         ) -> core::fmt::Result {
@@ -565,6 +571,11 @@ unsafe impl<'a, U: Facet<'a>> Facet<'a> for Weak<[U]> {
                 name: "T",
                 shape: <[U]>::SHAPE,
             }])
+            // `sync::Weak<[U]>` propagates `U`'s variance, like `Weak<T>` above.
+            .variance(VarianceDesc {
+                base: Variance::Bivariant,
+                deps: &const { [VarianceDep::covariant(U::SHAPE)] },
+            })
             .build()
     };
 }

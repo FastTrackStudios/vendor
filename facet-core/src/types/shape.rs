@@ -97,6 +97,23 @@ crate::bitflags! {
     }
 }
 
+/// Semantic representation affinity for a shape.
+///
+/// Mutually exclusive alternatives (hence an enum, not `ShapeFlags` bits):
+/// a shape is at most one of these. `#[non_exhaustive]` so formats must
+/// carry a structural-fallback arm for hints they don't know.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+#[repr(u8)]
+pub enum ReprAffinity {
+    /// No special affinity; the shape's structure speaks for itself.
+    None = 0,
+    /// A byte sequence that is conventionally (not necessarily) valid text,
+    /// e.g. `bstr::BString`. Text formats may render valid-UTF-8 content as
+    /// a string; binary/structural handling remains correct.
+    ByteString = 1,
+}
+
 /// Schema for reflection of a type — the core type in facet.
 /// Contains everything needed to inspect, allocate, and manipulate values at runtime.
 #[derive(Clone, Copy)]
@@ -155,6 +172,32 @@ pub struct Shape {
 
     /// Type name without generic parameters (e.g. `Vec`, not `Vec<String>`).
     /// For the full name with generics, use `vtable.type_name`.
+    ///
+    /// # This is a display token — do not branch on it
+    ///
+    /// It is a *name*, and names guarantee nothing: they are not unique (any two
+    /// crates may both define a `Config`), they carry no module path (that is
+    /// [`Shape::module_path`]), and they carry no generic arguments. In
+    /// particular `Cow<'_, str>` reads `"Cow"` here — `"Cow<str>"` is only what
+    /// `Display` renders, and the two are not interchangeable.
+    ///
+    /// So it is sound to *render* and to emit as a codegen identifier, and wrong
+    /// to make a decision with. Reach for the field that states what you mean:
+    ///
+    /// | To ask | Use |
+    /// |---|---|
+    /// | "are these the same type?" | [`Shape::id`] |
+    /// | "same declaration, different type arguments?" | [`Shape::decl_id`] |
+    /// | "is this an option / list / map / pointer?" | [`Shape::def`] |
+    /// | "is this a struct / enum / tuple?" | [`Shape::ty`] |
+    /// | "which scalar is this?" | [`Shape::scalar_type`] |
+    /// | "what does this format call the type?" | [`Shape::type_tag`] |
+    ///
+    /// Testing the name instead tends to fail quietly rather than loudly: a
+    /// substring check treats `OptionSet` as an `Option`, an equality check
+    /// conflates two unrelated `Config`s, and a check for text this field never
+    /// contains (`"::String"`, `"Cow<str>"`) is simply dead. All three shipped —
+    /// see the commit that added this note.
     pub type_identifier: &'static str,
 
     /// Module path where this type is defined (e.g. `"std::collections"`).
@@ -222,19 +265,16 @@ pub struct Shape {
 
     /// Container-level proxy for custom serialization/deserialization.
     /// Set by `#[facet(proxy = ProxyType)]` on the container.
-    #[cfg(feature = "alloc")]
     pub proxy: Option<&'static crate::ProxyDef>,
 
     /// Format-specific container-level proxy definitions.
     /// Set by `#[facet(xml::proxy = ProxyType)]`, `#[facet(json::proxy = ProxyType)]`, etc.
     ///
     /// These take precedence over the format-agnostic `proxy` field when the format matches.
-    #[cfg(feature = "alloc")]
     pub format_proxies: &'static [crate::FormatProxy],
 
     /// Container-level opaque adapter for custom opaque serialization/deserialization.
     /// Set by `#[facet(opaque = AdapterType)]` on the container.
-    #[cfg(feature = "alloc")]
     pub opaque_adapter: Option<&'static crate::OpaqueAdapterDef>,
 
     /// Declarative variance description for this type.
@@ -252,6 +292,11 @@ pub struct Shape {
     /// These are set by the derive macro based on `#[facet(...)]` attributes
     /// with `#[storage(flag)]` in the grammar.
     pub flags: ShapeFlags,
+
+    /// Semantic representation affinity — intent that structure alone cannot
+    /// express (e.g. "these bytes are conventionally text"). Formats consult
+    /// this to choose a rendering; `None` means structure speaks for itself.
+    pub affinity: ReprAffinity,
 
     /// Tag field name for internally/adjacently tagged enums.
     /// Set by `#[facet(tag = "...")]`.
@@ -446,7 +491,7 @@ impl Shape {
     pub fn has_builtin_attr(&self, key: &str) -> bool {
         self.attributes
             .iter()
-            .any(|attr| attr.ns.is_none() && attr.key == key)
+            .any(|attr| attr.ns().is_none() && attr.key() == key)
     }
 
     /// Returns true if this shape is transparent.
@@ -557,10 +602,10 @@ impl Shape {
         key: &str,
     ) -> Option<T> {
         self.attributes.iter().find_map(|attr| {
-            if attr.ns.is_none() && attr.key == key {
+            if attr.ns().is_none() && attr.key() == key {
                 // Try to get the data as the requested type
                 // Safety: We're checking that the shape matches T::SHAPE
-                unsafe { attr.data.get_as::<T>(T::SHAPE).copied() }
+                unsafe { attr.data().get_as::<T>(T::SHAPE).copied() }
             } else {
                 None
             }
@@ -574,7 +619,6 @@ impl Shape {
     ///
     /// # Returns
     /// The proxy definition for this format, or `None` if no format-specific proxy is defined.
-    #[cfg(feature = "alloc")]
     #[inline]
     pub fn format_proxy(&self, format: &str) -> Option<&'static crate::ProxyDef> {
         self.format_proxies
@@ -594,7 +638,6 @@ impl Shape {
     ///
     /// # Returns
     /// The appropriate proxy definition, or `None` if no proxy is defined.
-    #[cfg(feature = "alloc")]
     #[inline]
     pub fn effective_proxy(&self, format: Option<&str>) -> Option<&'static crate::ProxyDef> {
         // First try format-specific proxy
@@ -608,14 +651,12 @@ impl Shape {
     }
 
     /// Returns true if this shape has any proxy (format-specific or format-agnostic).
-    #[cfg(feature = "alloc")]
     #[inline]
     pub fn has_any_proxy(&self) -> bool {
         self.proxy.is_some() || !self.format_proxies.is_empty()
     }
 
     /// Returns true if this shape has a container-level opaque adapter.
-    #[cfg(feature = "alloc")]
     #[inline]
     pub const fn has_opaque_adapter(&self) -> bool {
         self.opaque_adapter.is_some()

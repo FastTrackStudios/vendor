@@ -6,17 +6,19 @@ lives once instead of once per repo.
 Every consumer repo (`architect`, `task`, `fasttrackstudio`) points a
 `[patch.crates-io]` entry at this repo and pins its own rev.
 
-**These are pinned to `*-rc.5`, matching the published versions on
-crates.io. Do not casually rebase onto upstream `main`** — upstream has
-drifted (see the notes below), and a rebase silently mixes API changes
-into what is meant to be a minimal fix.
+**Each is the published crates.io release named in the table, verbatim,
+plus the one fix. Do not casually rebase onto upstream `main`** — upstream
+has drifted (see the notes below), and a rebase silently mixes API changes
+into what is meant to be a minimal fix. To move to a newer release, start
+from that release's published source and re-apply the fix; the fleet
+(facet 0.50 / vox 0.10 / phon 0.2) is on **rc.7** as of 2026-09.
 
 | crate | upstream | pinned to | why |
 |---|---|---|---|
-| `phon` | [bearcove/phon](https://github.com/bearcove/phon) | `0.2.0-rc.5` | `Def::Scalar` opaque shapes |
-| `phon-jit` | [bearcove/phon](https://github.com/bearcove/phon) | `0.2.0-rc.5` | nightly probe breaks under nix |
+| `phon` | [bearcove/phon](https://github.com/bearcove/phon) | `0.2.0-rc.7` | `Def::Scalar` opaque shapes |
+| `phon-jit` | [bearcove/phon](https://github.com/bearcove/phon) | `0.2.0-rc.7` | nightly probe breaks under nix |
 | `styx-format` | [bearcove/styx](https://github.com/bearcove/styx) | `5.0.0-rc.5` | angle brackets in bare scalars |
-| `facet-core` | [facet-rs/facet](https://github.com/facet-rs/facet) | `0.50.0-rc.5` | chrono display truncates sub-second precision |
+| `facet-core` | [facet-rs/facet](https://github.com/facet-rs/facet) | `0.50.0-rc.7` | chrono display truncates sub-second precision |
 | `vox-phon` | [bearcove/vox](https://github.com/bearcove/vox) | `0.10.0-rc.7` | bogus post-decode length check aborts every real schema exchange |
 
 ## phon — `Def::Scalar` opaque shapes
@@ -35,13 +37,17 @@ display/parse scalars as a `Primitive::Bytes` UTF-8 `Display` run,
 decoded via the shape's parse vtable. All pre-existing branches keep
 precedence, so previously-working shapes encode byte-identically.
 
-**Upstream status:** not fixed. `derive.rs` on `main` has no
-`Def::Scalar`, `has_display`, `has_parse`, or Display fallback; the
-`ref_of` chain still ends in `Unsupported`.
+**Upstream status:** not fixed as of the published `0.2.0-rc.7`:
+`derive.rs` has no `Def::Scalar`, `has_display`, `has_parse`, or Display
+fallback; the `ref_of` chain still ends in `Unsupported`.
 
-**Rebase warning:** upstream `main` renamed `SchemaId(..)` to
-`SchemaId::from_raw(..)` throughout. The total diff against `main` is
-~221 lines, of which only ~18 are this fix.
+**Forward-ported to rc.7** (2026-09): the published rc.7 crate verbatim
+plus the same four hunks in `src/derive.rs` (129 added lines, nothing
+removed). The only adaptation is the `ref_of` hunk's neighbours, which
+rc.7 spells `SchemaId::from_raw(..)` where rc.5 had `SchemaId(..)`.
+Covered by `tests/display_scalar.rs` (its own test target, with its own
+dev-deps, because the publish strips the upstream tests' dev-deps); it
+fails on unpatched rc.7 with the lowering error.
 
 ## phon-jit — nightly probe breaks under nix
 
@@ -82,6 +88,10 @@ Upstream's own compliance corpus documents the bug
 appear in bare scalars, but `>` cannot").
 
 Strictly only `>` is fatal; quoting both is the safe superset.
+
+rc.5 is still the newest published styx-format, and `facet-styx`
+5.0.0-rc.7 depends on `^5.0.0-rc.5`, so this entry needed no forward-port
+for the rc.7 fleet.
 
 ## vox-phon — bogus post-decode length check aborts every real schema exchange
 
@@ -130,7 +140,7 @@ so their only encode path is the `display` fn in each vtable — there is
 no structural representation for a format to fall back on. Upstream
 0.50.0-rc.5 writes the `DateTime` types with
 `to_rfc3339_opts(SecondsFormat::Secs, true)` and the naive types with
-`%Y-%m-%dT%H:%M:%S` / `%H:%M:%S`. All four drop the fraction, so every
+`%Y-%m-%dT%H:%M:%S` / `%H:%M:%S`. Still so in the published rc.7. All four drop the fraction, so every
 facet format inherits the loss: facet-json, facet-toml, and vox.
 
 It is silent and one-directional. The value round-trips without error
@@ -144,6 +154,10 @@ previously-lossy case changes — existing files keep parsing, and the
 diff on stored data is empty unless precision was actually being lost.
 `NaiveDateTime`'s parse format gains `%.f` for the same reason (its
 display now emits one; `NaiveTime`'s parse already accepted it).
+
+**Forward-ported to rc.7** (2026-09): the published rc.7 crate verbatim
+(its `Cargo.toml.orig` kept as `Cargo.toml.upstream`) plus the same
+nine-line `src/impls/crates/chrono.rs` change and test target.
 
 Covered by `facet-core/tests/chrono_precision.rs`, which is its own
 test target: the crate's `main` target pulls in `type_name.rs`, whose
