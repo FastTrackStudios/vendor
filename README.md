@@ -20,6 +20,26 @@ from that release's published source and re-apply the fix; the fleet
 | `styx-format` | [bearcove/styx](https://github.com/bearcove/styx) | `5.0.0-rc.5` | angle brackets in bare scalars |
 | `facet-core` | [facet-rs/facet](https://github.com/facet-rs/facet) | `0.50.0-rc.7` | chrono display truncates sub-second precision |
 | `vox-phon` | [bearcove/vox](https://github.com/bearcove/vox) | `0.10.0-rc.7` | bogus post-decode length check aborts every real schema exchange |
+| `tao` | [tauri-apps/tao](https://github.com/tauri-apps/tao) | `0.35.3` | iOS release builds crash at launch on a released scene configuration |
+
+## tao — the scene configuration it returns is already released
+
+**Symptom:** a release iOS build of a Dioxus app crashes on every launch,
+before any app code: `EXC_BAD_ACCESS` in `objc_retain`, under
+`-[UIApplication _connectUISceneFromFBSScene:transitionContext:]`. A debug
+build of the same code runs. iOS 27 requires the scene lifecycle, so every
+app with `UIApplicationSupportsMultipleScenes` takes this path.
+
+tao's `application:configurationForConnectingSceneSession:options:`
+returned `Retained::as_ptr(&config)` and then dropped `config` — the only
+reference — so the caller received a pointer to an object it had just
+released. In debug an autorelease pool happened to hold it; in release the
+objc runtime's autorelease elision does not, and UIKit retains freed
+memory.
+
+**Fix** (`src/platform_impl/ios/view.rs`, one line): return
+`Retained::autorelease_return(config)`, the +0 autoreleased reference an
+Objective-C method returning an object owes its caller.
 
 ## phon — `Def::Scalar` opaque shapes
 

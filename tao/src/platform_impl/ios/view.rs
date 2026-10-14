@@ -643,7 +643,14 @@ pub fn create_delegate_class() {
 
       // Dynamically set the delegate class name
       config.setDelegateClass(Some(super::scene::TaoSceneDelegate::class()));
-      Retained::as_ptr(&config) as _
+      // FastTrackStudio/vendor fix: hand the caller an autoreleased
+      // reference. `Retained::as_ptr(&config)` returned the pointer and
+      // then dropped `config`, releasing the only reference: in a debug
+      // build an autorelease pool kept the object alive by accident, in
+      // a release build objc's autorelease elision did not, and UIKit's
+      // `objc_retain` of the freed configuration crashed every launch
+      // (`_connectUISceneFromFBSScene`, EXC_BAD_ACCESS).
+      Retained::autorelease_return(config) as _
     }
   }
 
