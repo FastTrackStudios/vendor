@@ -30,6 +30,7 @@ from that release's published source and re-apply the fix; the fleet
 | `raw-window-metal` | [rust-windowing/raw-window-metal](https://github.com/rust-windowing/raw-window-metal) | `1.1.0` | ObjC class name collides across plugin bundles (studio) |
 | `wgpu-hal` | [gfx-rs/wgpu](https://github.com/gfx-rs/wgpu) | `29.0.4` | iOS Simulator has indirect draw/dispatch (studio) |
 | `winit-uikit` | [rust-windowing/winit](https://github.com/rust-windowing/winit) | `0.31.0-beta.2` | proxy wake-up drains events queued during it (studio) |
+| `branches` | [fereidani/branches](https://github.com/fereidani/branches) | `0.4.6` | its nightly path uses `core::intrinsics` items current nightlies dropped (studio) |
 | `world-sys` (`world/`) | [mmorise/World](https://github.com/mmorise/World) | — | the WORLD vocoder, BSD-3-Clause (studio) |
 
 Each of the crates marked (studio) carries its own `UPSTREAM.md` or
