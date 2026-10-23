@@ -21,6 +21,22 @@ from that release's published source and re-apply the fix; the fleet
 | `facet-core` | [facet-rs/facet](https://github.com/facet-rs/facet) | `0.50.0-rc.7` | chrono display truncates sub-second precision |
 | `vox-phon` | [bearcove/vox](https://github.com/bearcove/vox) | `0.10.0-rc.7` | bogus post-decode length check aborts every real schema exchange |
 | `tao` | [tauri-apps/tao](https://github.com/tauri-apps/tao) | `0.35.3` | iOS release builds crash at launch on a released scene configuration |
+| `anyrender_vello` | [dioxuslabs/anyrender](https://github.com/dioxuslabs/anyrender) | `0.12.0` | window-renderer fixes found at 2560x1440 + the FTS blitz compositor/rasterizer (studio) |
+| `anyrender_vello_hybrid` | [dioxuslabs/anyrender](https://github.com/dioxuslabs/anyrender) | `0.8.0` | `set_size` resizes a wrong-sized surface (studio) |
+| `baseview` | [RustAudio/baseview](https://github.com/RustAudio/baseview) | `0.3.3` | macOS frame timer in common run-loop modes, so live resize doesn't freeze (studio) |
+| `dioxus-core` | [DioxusLabs/dioxus](https://github.com/DioxusLabs/dioxus) | rev `f717a8e1` | `Callback::__point_to` no longer unwraps a dropped owner (studio) |
+| `dioxus-native` | [DioxusLabs/dioxus](https://github.com/DioxusLabs/dioxus) | rev `f717a8e1` | iOS simulator takes `vello-hybrid` (studio) |
+| `dioxus-native-dom` | [DioxusLabs/dioxus](https://github.com/DioxusLabs/dioxus) | rev `f717a8e1` | stale ElementId→NodeId mappings after subtree removal (studio) |
+| `raw-window-metal` | [rust-windowing/raw-window-metal](https://github.com/rust-windowing/raw-window-metal) | `1.1.0` | ObjC class name collides across plugin bundles (studio) |
+| `wgpu-hal` | [gfx-rs/wgpu](https://github.com/gfx-rs/wgpu) | `29.0.4` | iOS Simulator has indirect draw/dispatch (studio) |
+| `winit-uikit` | [rust-windowing/winit](https://github.com/rust-windowing/winit) | `0.31.0-beta.2` | proxy wake-up drains events queued during it (studio) |
+| `world-sys` (`world/`) | [mmorise/World](https://github.com/mmorise/World) | — | the WORLD vocoder, BSD-3-Clause (studio) |
+
+Each of the crates marked (studio) carries its own `UPSTREAM.md` or
+`FTS-PATCH.md` with the full story. They moved here from studio's
+in-tree `vendor/` (2026-10) so a studio CI run caches them as compiled
+dependencies instead of building and testing them as workspace members;
+studio patches them in from a tag of this repo.
 
 ## tao — the scene configuration it returns is already released
 
