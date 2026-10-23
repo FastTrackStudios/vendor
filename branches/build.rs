@@ -3,11 +3,12 @@ use rustc_version::{version_meta, Channel, Version};
 fn main() {
     match version_meta() {
         Ok(meta) => {
-            if meta.channel == Channel::Nightly {
-                println!("cargo:rustc-cfg=branches_nightly");
-            } else {
-                println!("cargo:rustc-cfg=branches_stable");
-            }
+            // FTS: the stable path on every channel. The nightly path uses
+            // `core::intrinsics` items current nightlies no longer have; the
+            // stable path (`core::hint::cold_path` on 1.95+) gives the same
+            // hints. See FTS-PATCH.md.
+            let _ = meta.channel == Channel::Nightly;
+            println!("cargo:rustc-cfg=branches_stable");
             if meta.semver >= Version::parse("1.81.0").unwrap() {
                 println!("cargo:rustc-cfg=rustc_ge_1_81_0");
             }
