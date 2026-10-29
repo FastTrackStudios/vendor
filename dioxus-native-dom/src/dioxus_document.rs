@@ -77,6 +77,9 @@ pub struct DioxusDocument {
     pub(crate) body_element_id: NodeId,
     #[allow(unused)]
     pub(crate) main_element_id: NodeId,
+
+    /// FTS: this document's part in `text_input_focused` (text_focus.rs).
+    text_focus: crate::text_focus::TextFocus,
 }
 
 impl DioxusDocument {
@@ -139,6 +142,7 @@ impl DioxusDocument {
             head_element_id,
             body_element_id,
             main_element_id,
+            text_focus: crate::text_focus::TextFocus::default(),
         }
     }
 
@@ -226,16 +230,17 @@ impl Document for DioxusDocument {
         if let Ok(mut inner) = self.inner.try_borrow_mut() {
             crate::events::apply_pending_focus(&mut inner);
         }
-        {
+        let ready = {
             let fut = self.vdom.wait_for_work();
             let mut pinned_fut = pin!(fut);
 
             static NOOP_WAKER: LazyLock<Waker> = LazyLock::new(noop_waker);
             let mut cx = cx.unwrap_or_else(|| TaskContext::from_waker(&NOOP_WAKER));
-            match pinned_fut.as_mut().poll(&mut cx) {
-                std::task::Poll::Ready(_) => {}
-                std::task::Poll::Pending => return false,
-            }
+            pinned_fut.as_mut().poll(&mut cx).is_ready()
+        };
+        if !ready {
+            self.sync_text_focus();
+            return false;
         }
 
         let mut inner = self.inner.borrow_mut();
@@ -245,6 +250,7 @@ impl Document for DioxusDocument {
         crate::events::apply_pending_focus(&mut inner);
         drop(inner);
         self.flush_queued_mounted_events();
+        self.sync_text_focus();
 
         true
     }
@@ -259,6 +265,18 @@ impl Document for DioxusDocument {
         drop(driver);
         if let Ok(mut inner) = self.inner.try_borrow_mut() {
             crate::events::apply_pending_focus(&mut inner);
+        }
+        self.sync_text_focus();
+    }
+}
+
+impl DioxusDocument {
+    /// FTS: counts this document in or out of `text_input_focused` by what
+    /// has its focus now. Skipped while the document is borrowed; the next
+    /// poll catches up.
+    fn sync_text_focus(&mut self) {
+        if let Ok(inner) = self.inner.try_borrow() {
+            self.text_focus.sync(&inner);
         }
     }
 }

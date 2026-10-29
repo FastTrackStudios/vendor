@@ -12,10 +12,12 @@
 mod dioxus_document;
 mod events;
 mod mutation_writer;
+mod text_focus;
 mod write_once_attr;
 pub use blitz_dom::DocumentConfig;
 pub use dioxus_document::DioxusDocument;
 pub use events::{NodeHandle, synthetic_click_event};
+pub use text_focus::{on_text_focus_change, text_input_focused};
 pub use write_once_attr::{CustomWidgetAttr, SubDocumentAttr};
 
 use blitz_dom::{LocalName, Namespace, QualName, ns};

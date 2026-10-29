@@ -12,3 +12,15 @@ Queued mount events skip elements removed before delivery.
 Remove this patch after upgrading to an upstream version with equivalent mapping
 lifetime guarantees. Regression coverage lives in Session's DOM stress harness
 and the native mutation writer unit tests.
+
+FTS also adds `text_input_focused()` / `on_text_focus_change(f)`
+(`src/text_focus.rs`): each document counts itself in while its focused node
+is a text input, re-checked after every poll and UI event, so an app's
+global hotkeys can stand aside while text is typed — in every window, plugin
+editor and embedded panel. Not upstream; carry it across upgrades.
+
+Also carried and not listed above: `set_focus` parks a focus change while the
+document is borrowed (`PENDING_FOCUS`, `apply_pending_focus`), and
+`get_scroll_offset`, `get_scroll_size` and `get_client_rect` use `try_borrow`,
+so a handle that outlives a busy document reports an error instead of
+panicking.
