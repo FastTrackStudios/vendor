@@ -74,6 +74,13 @@ pub(crate) struct Scope {
     /// The suspense boundary location this scope is rendered under, if any.
     suspense_location: SuspenseLocation,
 
+    /// The location this scope was created in. The same as `suspense_location`
+    /// except for a suspense boundary, whose own location names the boundary
+    /// itself: this keeps where the boundary sits, so
+    /// `Runtime::scope_should_render` can tell a boundary inside a suspended
+    /// boundary's background from one in the foreground (FTS, task#410).
+    enclosing_suspense_location: SuspenseLocation,
+
     /// The driver owning this scope's rendered output, attached when the
     /// scope's `VComponent` was constructed: the plain component lifecycle
     /// unless the component's `into_vcomponent` supplied a portal/suspense
@@ -84,6 +91,7 @@ pub(crate) struct Scope {
 }
 
 impl Scope {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         name: &'static str,
         id: ScopeId,
@@ -91,6 +99,7 @@ impl Scope {
         target_id: RenderTargetId,
         height: u32,
         suspense_location: SuspenseLocation,
+        enclosing_suspense_location: SuspenseLocation,
         render_driver: Rc<dyn RenderDriver>,
     ) -> Self {
         Self {
@@ -111,6 +120,7 @@ impl Scope {
                 effects_queued: Vec::new(),
             }),
             suspense_location,
+            enclosing_suspense_location,
             render_driver,
         }
     }
@@ -158,6 +168,12 @@ impl Scope {
     /// Get the suspense location of this scope
     pub(crate) fn suspense_location(&self) -> SuspenseLocation {
         self.suspense_location.clone()
+    }
+
+    /// Whether the location this scope was created in may write to the
+    /// renderer: false inside the background of a suspended boundary.
+    pub(crate) fn enclosing_location_should_write(&self) -> bool {
+        self.enclosing_suspense_location.should_write()
     }
 
     /// If this scope is a suspense boundary, return the suspense context

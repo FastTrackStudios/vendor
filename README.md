@@ -24,7 +24,7 @@ from that release's published source and re-apply the fix; the fleet
 | `anyrender_vello` | [dioxuslabs/anyrender](https://github.com/dioxuslabs/anyrender) | `0.15.0` | window-renderer fixes found at 2560x1440 + the FTS blitz compositor/rasterizer (studio) |
 | `anyrender_vello_hybrid` | [dioxuslabs/anyrender](https://github.com/dioxuslabs/anyrender) | `0.11.0` | `set_size` resizes a wrong-sized surface (studio) |
 | `baseview` | [RustAudio/baseview](https://github.com/RustAudio/baseview) | `0.3.3` | macOS frame timer in common run-loop modes, so live resize doesn't freeze (studio) |
-| `dioxus-vdom` (was `dioxus-core`) | [DioxusLabs/dioxus](https://github.com/DioxusLabs/dioxus) | rev `430cfb56` | `Callback::__point_to` no longer unwraps a dropped owner (studio) |
+| `dioxus-vdom` (was `dioxus-core`) | [DioxusLabs/dioxus](https://github.com/DioxusLabs/dioxus) | rev `430cfb56` | `Callback::__point_to` no longer unwraps a dropped owner (studio); a boundary inside a suspended boundary's background no longer writes (task#410) |
 | `dioxus-native` | [DioxusLabs/dioxus](https://github.com/DioxusLabs/dioxus) | rev `430cfb56` | iOS simulator takes `vello-hybrid`; winit `=0.31.0-beta.4` to match Blitz main (studio) |
 | `dioxus-native-dom` | [DioxusLabs/dioxus](https://github.com/DioxusLabs/dioxus) | rev `430cfb56` | `text_input_focused`, focus parked while the document is busy, measurements that never panic (studio) |
 | `raw-window-metal` | [rust-windowing/raw-window-metal](https://github.com/rust-windowing/raw-window-metal) | `1.1.0` | ObjC class name collides across plugin bundles (studio) |

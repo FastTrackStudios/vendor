@@ -37,3 +37,21 @@ serialize = ["dep:serde", "dioxus-vdom-template/serialize"]
 # Allow `#[cfg(coverage_nightly)]` (upstream gates nightly-only coverage
 # attributes on it) and `#[cfg(fuzzing)]`.
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)', 'cfg(fuzzing)'] }
+
+# Only for `cargo test` in this directory: upstream's dev-dependencies (minus
+# the bench-only ones), so the doctests and `tests/nested_suspense.rs` build.
+# The dioxus siblings are git deps at the same rev, and the `[patch]` points
+# their own `dioxus-vdom` at this copy, so the tests run against the vendored
+# code. A consumer that depends on this crate ignores both tables.
+[dev-dependencies]
+dioxus = { git = "https://github.com/DioxusLabs/dioxus", rev = "430cfb563f1b70602ef387f0c80f171d84527b41" }
+dioxus-renderer-oracle = { git = "https://github.com/DioxusLabs/dioxus", rev = "430cfb563f1b70602ef387f0c80f171d84527b41" }
+dioxus-ssr = { git = "https://github.com/DioxusLabs/dioxus", rev = "430cfb563f1b70602ef387f0c80f171d84527b41" }
+dioxus-html = { git = "https://github.com/DioxusLabs/dioxus", rev = "430cfb563f1b70602ef387f0c80f171d84527b41", features = ["serialize"] }
+tokio = { version = "1.52.1", features = ["full"] }
+rand = { version = "0.9", features = ["small_rng"] }
+reqwest = { version = "0.13.5", default-features = false }
+web-sys = { version = "0.3.104", features = ["Document", "HtmlElement", "Window"] }
+
+[patch."https://github.com/DioxusLabs/dioxus"]
+dioxus-vdom = { path = "." }

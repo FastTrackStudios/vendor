@@ -30,7 +30,7 @@ impl VirtualDom {
             .runtime
             .current_suspense_location()
             .unwrap_or(SuspenseLocation::NotSuspended);
-        let suspense_location = driver.suspense_location(inherited_suspense_location);
+        let suspense_location = driver.suspense_location(inherited_suspense_location.clone());
         let entry = self.scopes.vacant_entry();
         let id = ScopeId::new(entry.key());
 
@@ -41,6 +41,7 @@ impl VirtualDom {
             target_id,
             height,
             suspense_location,
+            inherited_suspense_location,
             driver,
         );
         let reactive_context = ReactiveContext::new_for_scope(&scope_runtime, &self.runtime);

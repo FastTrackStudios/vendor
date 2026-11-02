@@ -420,17 +420,30 @@ fn MyComponent() -> Element {{
     }
 
     /// Check if we should render a scope
+    ///
+    /// A scope may write to the renderer only if it is not in the background of
+    /// any suspended boundary above it. Checking the nearest boundary is not
+    /// enough: a boundary (or a scope under a resolved boundary) can itself sit
+    /// inside an outer boundary that is still suspended, and everything there
+    /// lives in the background, mounted without a writer. Writing its diffs
+    /// places nodes against ones the renderer never received. So walk the whole
+    /// parent chain, and for each scope check the location it was created in
+    /// (for a boundary that is where the boundary sits, not the boundary itself).
+    /// FTS vendor patch, the core half of DioxusLabs/dioxus#5668 (task#410).
     pub(crate) fn scope_should_render(&self, scope_id: ScopeId) -> bool {
         let scopes = self.scope_states.borrow();
-        let scope = &scopes[scope_id.index()].as_ref().unwrap();
-        let location = scope.suspense_location();
-        if self.suspended_tasks.get() == 0 {
-            return !matches!(
-                location,
-                SuspenseLocation::UnderSuspense(boundary) if boundary.is_suspended()
-            );
+        let mut current = Some(scope_id);
+        while let Some(id) = current {
+            let Some(Some(scope)) = scopes.get(id.index()) else {
+                break;
+            };
+            if !scope.suspense_location().should_write() || !scope.enclosing_location_should_write()
+            {
+                return false;
+            }
+            current = scope.parent_id();
         }
-        location.should_write()
+        true
     }
 
     /// Call a listener inside the VirtualDom with data from outside the VirtualDom. **The ElementId passed in must be the id of an element with a listener, not a static node or a text node.**
