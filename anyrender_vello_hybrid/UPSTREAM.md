@@ -1,4 +1,4 @@
-Source: crates.io `anyrender_vello_hybrid` 0.8.0 (dioxuslabs/anyrender), the
+Source: crates.io `anyrender_vello_hybrid` 0.11.0 (dioxuslabs/anyrender), the
 published tarball with the registry's own bookkeeping files dropped; the
 licence files are the anyrender repo's.
 License: MIT OR Apache-2.0 — theirs, not ours, and it stays that way.
@@ -22,5 +22,6 @@ Vendored for one change to `window_renderer.rs`:
   at the right and a black band along the bottom. Full Vello's
   `set_size` resizes unconditionally and never had the bug.
 
-  Still present in upstream `main` as of 2026-09-25; drop this copy once
+  Still present in the published 0.11.0 (2026-10-03), which also resizes
+  its depth texture alongside the surface (carried); drop this copy once
   a release fixes it.

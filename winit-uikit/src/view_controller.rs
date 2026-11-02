@@ -7,6 +7,7 @@ use objc2_ui_kit::{
     UIDevice, UIInterfaceOrientationMask, UIRectEdge, UIResponder, UIStatusBarStyle,
     UIUserInterfaceIdiom, UIView, UIViewController,
 };
+use tracing::trace_span;
 
 use crate::{ScreenEdge, StatusBarStyle, ValidOrientations, WindowAttributesIos};
 
@@ -28,34 +29,38 @@ define_class!(
     impl WinitViewController {
         #[unsafe(method(shouldAutorotate))]
         fn should_autorotate(&self) -> bool {
+            let _entered = trace_span!("shouldAutorotate").entered();
             true
         }
 
         #[unsafe(method(prefersStatusBarHidden))]
         fn prefers_status_bar_hidden(&self) -> bool {
+            let _entered = trace_span!("prefersStatusBarHidden").entered();
             self.ivars().prefers_status_bar_hidden.get()
         }
 
         #[unsafe(method(preferredStatusBarStyle))]
         fn preferred_status_bar_style(&self) -> UIStatusBarStyle {
+            let _entered = trace_span!("preferredStatusBarStyle").entered();
             self.ivars().preferred_status_bar_style.get()
         }
 
         #[unsafe(method(prefersHomeIndicatorAutoHidden))]
         fn prefers_home_indicator_auto_hidden(&self) -> bool {
+            let _entered = trace_span!("prefersHomeIndicatorAutoHidden").entered();
             self.ivars().prefers_home_indicator_auto_hidden.get()
         }
 
         #[unsafe(method(supportedInterfaceOrientations))]
         fn supported_orientations(&self) -> UIInterfaceOrientationMask {
+            let _entered = trace_span!("supportedInterfaceOrientations").entered();
             self.ivars().supported_orientations.get()
         }
 
         #[unsafe(method(preferredScreenEdgesDeferringSystemGestures))]
         fn preferred_screen_edges_deferring_system_gestures(&self) -> UIRectEdge {
-            self.ivars()
-                .preferred_screen_edges_deferring_system_gestures
-                .get()
+            let _entered = trace_span!("preferredScreenEdgesDeferringSystemGestures").entered();
+            self.ivars().preferred_screen_edges_deferring_system_gestures.get()
         }
     }
 );
@@ -90,16 +95,10 @@ impl WinitViewController {
 
     pub(crate) fn set_preferred_screen_edges_deferring_system_gestures(&self, val: ScreenEdge) {
         let val = {
-            assert_eq!(
-                val.bits() & !ScreenEdge::ALL.bits(),
-                0,
-                "invalid `ScreenEdge`"
-            );
+            assert_eq!(val.bits() & !ScreenEdge::ALL.bits(), 0, "invalid `ScreenEdge`");
             UIRectEdge(val.bits().into())
         };
-        self.ivars()
-            .preferred_screen_edges_deferring_system_gestures
-            .set(val);
+        self.ivars().preferred_screen_edges_deferring_system_gestures.set(val);
         if available!(ios = 11.0, visionos = 1.0) {
             self.setNeedsUpdateOfScreenEdgesDeferringSystemGestures();
         } else {
@@ -115,22 +114,19 @@ impl WinitViewController {
         mtm: MainThreadMarker,
         valid_orientations: ValidOrientations,
     ) {
-        let mask = match (
-            valid_orientations,
-            UIDevice::currentDevice(mtm).userInterfaceIdiom(),
-        ) {
+        let mask = match (valid_orientations, UIDevice::currentDevice(mtm).userInterfaceIdiom()) {
             (ValidOrientations::LandscapeAndPortrait, UIUserInterfaceIdiom::Phone) => {
                 UIInterfaceOrientationMask::AllButUpsideDown
-            }
+            },
             (ValidOrientations::LandscapeAndPortrait, _) => UIInterfaceOrientationMask::All,
             (ValidOrientations::Landscape, _) => UIInterfaceOrientationMask::Landscape,
             (ValidOrientations::Portrait, UIUserInterfaceIdiom::Phone) => {
                 UIInterfaceOrientationMask::Portrait
-            }
+            },
             (ValidOrientations::Portrait, _) => {
                 UIInterfaceOrientationMask::Portrait
                     | UIInterfaceOrientationMask::PortraitUpsideDown
-            }
+            },
         };
         self.ivars().supported_orientations.set(mask);
         #[allow(deprecated)]

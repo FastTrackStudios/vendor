@@ -11,9 +11,13 @@ use vello::{
     AaConfig, AaSupport, RenderParams, Renderer as VelloRenderer, RendererOptions,
     Scene as VelloScene,
 };
-use wgpu::{Features, Limits, PresentMode, Texture, TextureFormat, TextureUsages};
+use wgpu::{
+    CompositeAlphaMode, Features, Limits, PipelineCache, PresentMode, Texture, TextureFormat,
+    TextureUsages,
+};
 use wgpu_context::{
-    DeviceHandle, SurfaceRenderer, SurfaceRendererConfiguration, TextureConfiguration, WGPUContext,
+    AlphaConversion, DeviceHandle, SurfaceRenderer, SurfaceRendererConfiguration,
+    TextureConfiguration, WGPUContext,
 };
 
 use crate::compositor::Compositor;
@@ -57,20 +61,110 @@ enum RenderState {
 }
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct VelloRendererOptions {
     pub features: Option<Features>,
     pub limits: Option<Limits>,
     pub base_color: Color,
     pub antialiasing_method: AaConfig,
+    /// Alpha mode used when compositing the window surface.
+    pub composite_alpha_mode: anyrender::CompositeAlphaMode,
+    /// Cache that wgpu may reuse compiled pipelines from, avoiding shader
+    /// compilation on start-up. Creating it, persisting its data and deciding
+    /// when it is stale are all the caller's responsibility.
+    pub pipeline_cache: Option<PipelineCache>,
+    /// Maximum number of frames the presentation engine may queue ahead of the
+    /// display. Each queued frame requires a window-sized swapchain surface, so
+    /// lower values reduce memory usage and input latency at the cost of less
+    /// buffering to absorb slow frames.
+    pub desired_maximum_frame_latency: u32,
 }
 
 impl Default for VelloRendererOptions {
     fn default() -> Self {
+        // FTS: the surface's clear colour from `ANYRENDER_BASE_COLOR`
+        // (see `base_color_from_env`); `new` is `const` and cannot read it.
+        Self {
+            base_color: base_color_from_env().unwrap_or(Color::WHITE),
+            ..Self::new()
+        }
+    }
+}
+
+impl VelloRendererOptions {
+    pub const fn new() -> Self {
         Self {
             features: None,
             limits: None,
-            base_color: base_color_from_env().unwrap_or(Color::WHITE),
+            base_color: Color::WHITE,
             antialiasing_method: AaConfig::Msaa16,
+            composite_alpha_mode: anyrender::CompositeAlphaMode::Auto,
+            pipeline_cache: None,
+            desired_maximum_frame_latency: 1,
+        }
+    }
+
+    pub fn features(self, features: Features) -> Self {
+        Self {
+            features: Some(features),
+            ..self
+        }
+    }
+
+    pub fn limits(self, limits: Limits) -> Self {
+        Self {
+            limits: Some(limits),
+            ..self
+        }
+    }
+
+    pub fn base_color(self, base_color: Color) -> Self {
+        Self { base_color, ..self }
+    }
+
+    pub fn antialiasing_method(self, antialiasing_method: AaConfig) -> Self {
+        Self {
+            antialiasing_method,
+            ..self
+        }
+    }
+
+    pub fn composite_alpha_mode(
+        self,
+        composite_alpha_mode: anyrender::types::CompositeAlphaMode,
+    ) -> Self {
+        Self {
+            composite_alpha_mode,
+            ..self
+        }
+    }
+
+    pub fn pipeline_cache(self, pipeline_cache: PipelineCache) -> Self {
+        Self {
+            pipeline_cache: Some(pipeline_cache),
+            ..self
+        }
+    }
+
+    pub fn desired_maximum_frame_latency(self, desired_maximum_frame_latency: u32) -> Self {
+        Self {
+            desired_maximum_frame_latency,
+            ..self
+        }
+    }
+}
+
+impl From<anyrender::RendererConfig> for VelloRendererOptions {
+    fn from(config: anyrender::RendererConfig) -> Self {
+        Self {
+            // FTS: an explicit colour wins; `ANYRENDER_BASE_COLOR` is the
+            // fallback before upstream's white.
+            base_color: config
+                .base_color
+                .or_else(base_color_from_env)
+                .unwrap_or(Color::WHITE),
+            composite_alpha_mode: config.composite_alpha_mode.unwrap_or_default(),
+            ..Default::default()
         }
     }
 }
@@ -113,7 +207,8 @@ impl VelloWindowRenderer {
         Self::with_options(VelloRendererOptions::default())
     }
 
-    pub fn with_options(config: VelloRendererOptions) -> Self {
+    pub fn with_options(config: impl Into<VelloRendererOptions>) -> Self {
+        let config = config.into();
         Self {
             render_state: RenderState::Suspended,
             wgpu_context: build_wgpu_context(&config),
@@ -227,6 +322,24 @@ impl WindowRenderer for VelloWindowRenderer {
         let instance = self.wgpu_context.instance.clone();
         let extra_features = self.wgpu_context.extra_features();
         let override_limits = self.wgpu_context.override_limits();
+        let mut composite_alpha_mode = match self.config.composite_alpha_mode {
+            anyrender::CompositeAlphaMode::Auto => CompositeAlphaMode::Auto,
+            anyrender::CompositeAlphaMode::Opaque => CompositeAlphaMode::Opaque,
+            anyrender::CompositeAlphaMode::Transparent => {
+                #[cfg(target_vendor = "apple")]
+                {
+                    // wgpu is lying in apple's case it uses PreMultiplied in reality
+                    // (do not modify shaders for PostMultiplied)
+                    CompositeAlphaMode::PostMultiplied
+                }
+                #[cfg(not(target_vendor = "apple"))]
+                {
+                    CompositeAlphaMode::PreMultiplied
+                }
+            }
+        };
+        let pipeline_cache = self.config.pipeline_cache.clone();
+        let desired_maximum_frame_latency = self.config.desired_maximum_frame_latency;
         let existing_device_handle = self
             .wgpu_context
             .find_compatible_device_handle(Some(&surface));
@@ -243,6 +356,63 @@ impl WindowRenderer for VelloWindowRenderer {
                 .await
                 .expect("Error creating DeviceHandle"),
             };
+
+            let adapter = &device_handle.adapter;
+            let caps = surface.get_capabilities(adapter);
+            let mut alpha_modes = caps.alpha_modes;
+
+            if !alpha_modes.contains(&composite_alpha_mode) {
+                alpha_modes.sort_unstable_by(
+                    |first: &CompositeAlphaMode, second: &CompositeAlphaMode| {
+                        let first_num = match *first {
+                            CompositeAlphaMode::PreMultiplied => 0,
+                            CompositeAlphaMode::PostMultiplied => 1,
+                            CompositeAlphaMode::Opaque
+                            | CompositeAlphaMode::Inherit
+                            | CompositeAlphaMode::Auto => 2,
+                        };
+                        let second_num = match *second {
+                            CompositeAlphaMode::PreMultiplied => 0,
+                            CompositeAlphaMode::PostMultiplied => 1,
+                            CompositeAlphaMode::Opaque
+                            | CompositeAlphaMode::Inherit
+                            | CompositeAlphaMode::Auto => 2,
+                        };
+                        first_num.cmp(&second_num)
+                    },
+                );
+                composite_alpha_mode = alpha_modes
+                    .first()
+                    .copied()
+                    .expect("Surface didn't report any alpha modes");
+            }
+
+            #[cfg(not(target_vendor = "apple"))]
+            let texture_config = Some(TextureConfiguration {
+                // FTS: RENDER_ATTACHMENT for the compositor's pass, which
+                // draws the window's frame (vello renders into the
+                // compositor's base).
+                usage: TextureUsages::STORAGE_BINDING
+                    | TextureUsages::TEXTURE_BINDING
+                    | TextureUsages::RENDER_ATTACHMENT,
+                format: TextureFormat::Rgba8Unorm,
+                alpha_conversion: (composite_alpha_mode == CompositeAlphaMode::PreMultiplied)
+                    .then_some(AlphaConversion::Premultiply),
+            });
+            // TODO: Remove below once gfx-rs/wgpu#9896 gets fixed
+            #[cfg(target_vendor = "apple")]
+            let texture_config = Some(TextureConfiguration {
+                // FTS: RENDER_ATTACHMENT for the compositor's pass, which
+                // draws the window's frame (vello renders into the
+                // compositor's base).
+                usage: TextureUsages::STORAGE_BINDING
+                    | TextureUsages::TEXTURE_BINDING
+                    | TextureUsages::RENDER_ATTACHMENT,
+                format: TextureFormat::Rgba8Unorm,
+                alpha_conversion: (composite_alpha_mode == CompositeAlphaMode::PostMultiplied
+                    || composite_alpha_mode == CompositeAlphaMode::PreMultiplied)
+                    .then_some(AlphaConversion::Premultiply),
+            });
 
             // FTS: always through the intermediate texture — the
             // compositor renders the window's frame into it, so the
@@ -266,36 +436,20 @@ impl WindowRenderer for VelloWindowRenderer {
                         Ok("mailbox") => PresentMode::Mailbox,
                         _ => PresentMode::AutoVsync,
                     },
-                    // One, not two.
-                    //
-                    // Two lets the CPU run a frame ahead, which is the
-                    // right default for a game that can always fill the
-                    // pipeline. Here it means `get_current_texture`
-                    // blocks until the queue drains, and that block is
-                    // on the critical path: measured on an arrangement
-                    // at 2560x1440, acquire-and-present went from 6.7ms
-                    // at a latency of two to 2.2ms at one, with the GPU
-                    // render itself only 1.3ms either way. Three was
-                    // worse again.
-                    //
-                    // `FTS_FRAME_LATENCY` still overrides it, because
-                    // this is the sort of number that wants re-measuring
-                    // on a different compositor.
+                    // FTS: `FTS_FRAME_LATENCY` overrides the configured
+                    // latency (1 by default since anyrender_vello 0.15,
+                    // which took the measurement this fork made: at 2560x1440
+                    // acquire-and-present went from 6.7ms at a latency of
+                    // two to 2.2ms at one), because it is the sort of number
+                    // that wants re-measuring on a different compositor.
                     desired_maximum_frame_latency: std::env::var("FTS_FRAME_LATENCY")
                         .ok()
                         .and_then(|v| v.parse().ok())
-                        .unwrap_or(1),
-                    alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                        .unwrap_or(desired_maximum_frame_latency),
+                    alpha_mode: composite_alpha_mode,
                     view_formats: vec![],
                 },
-                Some(TextureConfiguration {
-                    // FTS: RENDER_ATTACHMENT for the compositor's pass,
-                    // which now draws the window's frame (vello renders
-                    // into the compositor's base).
-                    usage: TextureUsages::STORAGE_BINDING
-                        | TextureUsages::TEXTURE_BINDING
-                        | TextureUsages::RENDER_ATTACHMENT,
-                }),
+                texture_config,
                 device_handle,
             )
             .expect("Error creating SurfaceRenderer");
@@ -306,7 +460,7 @@ impl WindowRenderer for VelloWindowRenderer {
                     antialiasing_support: AaSupport::all(),
                     use_cpu: false,
                     num_init_threads: DEFAULT_THREADS,
-                    pipeline_cache: None,
+                    pipeline_cache,
                 },
             )
             .unwrap();
@@ -462,6 +616,7 @@ impl WindowRenderer for VelloWindowRenderer {
         let Ok(texture_view) = render_surface.target_texture_view() else {
             // Skip frame in case of error trying to get current surface texture
             render_surface.clear_surface_texture();
+            self.scene.reset();
             return;
         };
         let layers = anyrender::composite::layers();
@@ -477,6 +632,7 @@ impl WindowRenderer for VelloWindowRenderer {
         drop(texture_view);
 
         if render_surface.maybe_blit_and_present().is_err() {
+            self.scene.reset();
             return;
         }
         timer.record_time("present");

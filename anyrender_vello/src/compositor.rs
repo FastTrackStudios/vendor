@@ -106,11 +106,12 @@ impl Compositor {
                     module: &module,
                     entry_point: Some("vs"),
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
+                    // wgpu 30: a vertex buffer slot may be empty.
+                    buffers: &[Some(wgpu::VertexBufferLayout {
                         array_stride: 20,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2, 2 => Float32],
-                    }],
+                    })],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &module,

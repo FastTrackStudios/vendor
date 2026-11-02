@@ -1,11 +1,13 @@
-Source: crates.io `anyrender_vello` 0.12.0 (dioxuslabs/anyrender), the
+Source: crates.io `anyrender_vello` 0.15.0 (dioxuslabs/anyrender), the
 published tarball with the registry's own bookkeeping files dropped —
-merged (2026-10-03) with the copy the FastTrackStudios blitz fork carries
-at tag `fts-focus-2026-10` (`vendor/anyrender_vello`): its `compositor.rs`
-and `rasterizer.rs`, which composite texture widgets over a kept page and
-rasterise a scene for one (`anyrender_vello::Rasterizer`, which the
-processor's painted visualisers use). A three-way merge against the
-registry original; the fork's own poll change and ours agreed.
+re-vendored 2026-11-01 from 0.12.0 (blitz branch `fts-upstream-2026-11`,
+architect#170) by a three-way merge of this copy's FTS changes onto the
+0.15.0 source. Originally merged (2026-10-03) with the copy the
+FastTrackStudios blitz fork carries (`vendor/anyrender_vello`): its
+`compositor.rs` and `rasterizer.rs`, which composite texture widgets over
+a kept page and rasterise a scene for one (`anyrender_vello::Rasterizer`,
+which the processor's painted visualisers use). The blitz fork's copy and
+this one are meant to stay identical.
 License: MIT OR Apache-2.0 — theirs, not ours, and it stays that way.
 
 Vendored for three changes to `window_renderer.rs`, all found by
@@ -33,7 +35,10 @@ these numbers:
   different driver may not agree, but do not expect it to show up in a
   number.
 
-- **`desired_maximum_frame_latency` is 1, not 2.** Two lets the CPU run a
+- **`desired_maximum_frame_latency` is 1, not 2.** (Upstream took this
+  in 0.15.0: `VelloRendererOptions::desired_maximum_frame_latency`,
+  default 1. The fork keeps only the `FTS_FRAME_LATENCY` override on top
+  of the configured value.) Two lets the CPU run a
   frame ahead, which is right for something that can always fill the
   pipeline; here it meant `get_current_texture` blocked until the queue
   drained, on the critical path. Acquire-and-present went from 6.7 ms at
@@ -61,6 +66,8 @@ Drop the vendor if upstream takes the barrier and latency changes. See
 the root `[patch.crates-io]` entry and issue #119.
 
 FTS (STA-299): `VelloRendererOptions::default()` reads the surface's clear
-colour from `ANYRENDER_BASE_COLOR=#rrggbb` (upstream: white). It is what
+colour from `ANYRENDER_BASE_COLOR=#rrggbb` (upstream: white), and so does
+`From<anyrender::RendererConfig>` when the config names no colour
+(`VelloRendererOptions::new()` is `const` upstream and stays white). It is what
 shows wherever the page paints nothing — on iOS, the safe-area strips
 outside Blitz's viewport. Signal's iOS app sets its dark ground there.

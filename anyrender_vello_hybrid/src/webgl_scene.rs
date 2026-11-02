@@ -1,4 +1,4 @@
-//! WebGL-compatible [`PaintScene`] implementation for [`vello_hybrid::Scene`].
+//! WebGL-compatible [`PaintScene`] implementation for [`vello_gpu::Scene`].
 
 use anyrender::{Filter, Glyph, NormalizedCoord, Paint, PaintRef, PaintScene, RenderContext};
 use glifo::FontEmbolden;
@@ -15,15 +15,15 @@ use std::sync::Arc;
 const DEFAULT_TOLERANCE: f64 = 0.1;
 
 pub struct WebGlImageManager<'a> {
-    pub(crate) renderer: &'a mut vello_hybrid::WebGlRenderer,
-    pub(crate) resources: &'a mut vello_hybrid::Resources,
+    pub(crate) renderer: &'a mut vello_gpu::WebGlRenderer,
+    pub(crate) resources: &'a mut vello_gpu::Resources,
     pub(crate) cache: &'a mut FxHashMap<u64, ImageId>,
 }
 
 impl<'a> WebGlImageManager<'a> {
     pub fn new(
-        renderer: &'a mut vello_hybrid::WebGlRenderer,
-        resources: &'a mut vello_hybrid::Resources,
+        renderer: &'a mut vello_gpu::WebGlRenderer,
+        resources: &'a mut vello_gpu::Resources,
         cache: &'a mut FxHashMap<u64, ImageId>,
     ) -> Self {
         Self {
@@ -33,20 +33,23 @@ impl<'a> WebGlImageManager<'a> {
         }
     }
 
-    pub(crate) fn upload_image(&mut self, image: &peniko::ImageData) -> ImageId {
+    pub(crate) fn upload_image(
+        &mut self,
+        image: &peniko::ImageData,
+    ) -> Result<ImageId, vello_gpu::WebGlError> {
         let peniko_id = image.data.id();
 
         if let Some(atlas_id) = self.cache.get(&peniko_id) {
-            return *atlas_id;
+            return Ok(*atlas_id);
         }
 
         let ImageSource::Pixmap(pixmap) = ImageSource::from_peniko_image_data(image) else {
             unreachable!();
         };
 
-        let atlas_id = self.renderer.upload_image(self.resources, &pixmap);
+        let atlas_id = self.renderer.upload_image(self.resources, &pixmap)?;
         self.cache.insert(peniko_id, atlas_id);
-        atlas_id
+        Ok(atlas_id)
     }
 }
 
@@ -56,13 +59,13 @@ enum LayerKind {
 }
 
 pub struct WebGlScenePainter<'s> {
-    scene: &'s mut vello_hybrid::Scene,
+    scene: &'s mut vello_gpu::Scene,
     layer_stack: Vec<LayerKind>,
     image_manager: WebGlImageManager<'s>,
 }
 
 impl<'s> WebGlScenePainter<'s> {
-    pub fn new(scene: &'s mut vello_hybrid::Scene, image_manager: WebGlImageManager<'s>) -> Self {
+    pub fn new(scene: &'s mut vello_gpu::Scene, image_manager: WebGlImageManager<'s>) -> Self {
         Self {
             scene,
             layer_stack: Vec::with_capacity(16),
@@ -85,7 +88,9 @@ impl WebGlScenePainter<'_> {
     }
 
     fn convert_image_paint(&mut self, image_brush: peniko::ImageBrushRef<'_>) -> PaintType {
-        let image_id = self.image_manager.upload_image(image_brush.image);
+        let Ok(image_id) = self.image_manager.upload_image(image_brush.image) else {
+            return PaintType::Solid(Color::TRANSPARENT);
+        };
         PaintType::Image(ImageBrush {
             image: ImageSource::OpaqueId {
                 id: image_id,
@@ -105,6 +110,7 @@ impl PaintScene for WebGlScenePainter<'_> {
 
     fn push_layer(
         &mut self,
+        fill: Fill,
         blend: impl Into<BlendMode>,
         alpha: f32,
         transform: Affine,
@@ -114,6 +120,7 @@ impl PaintScene for WebGlScenePainter<'_> {
     ) {
         let filter = filter.and_then(crate::filters::convert_filter);
         self.scene.set_transform(transform);
+        self.scene.set_fill_rule(fill);
         self.layer_stack.push(LayerKind::Layer);
         self.scene
             .push_clip_path(&clip.into_path(DEFAULT_TOLERANCE));
@@ -121,8 +128,9 @@ impl PaintScene for WebGlScenePainter<'_> {
             .push_layer(None, Some(blend.into()), Some(alpha), None, filter);
     }
 
-    fn push_clip_layer(&mut self, transform: Affine, clip: &impl Shape) {
+    fn push_clip_layer(&mut self, fill: Fill, transform: Affine, clip: &impl Shape) {
         self.scene.set_transform(transform);
+        self.scene.set_fill_rule(fill);
         self.layer_stack.push(LayerKind::Clip);
         self.scene
             .push_clip_path(&clip.into_path(DEFAULT_TOLERANCE));
@@ -133,9 +141,9 @@ impl PaintScene for WebGlScenePainter<'_> {
             match kind {
                 LayerKind::Layer => {
                     self.scene.pop_layer();
-                    self.scene.pop_clip_path();
+                    self.scene.pop_clip();
                 }
-                LayerKind::Clip => self.scene.pop_clip_path(),
+                LayerKind::Clip => self.scene.pop_clip(),
             }
         }
     }
@@ -196,7 +204,8 @@ impl PaintScene for WebGlScenePainter<'_> {
         match style {
             StyleRef::Fill(fill) => {
                 self.scene.set_fill_rule(fill);
-                self.scene
+                let _ = self
+                    .scene
                     .glyph_run(self.image_manager.resources, font)
                     .font_size(font_size)
                     .hint(hint)
@@ -211,7 +220,8 @@ impl PaintScene for WebGlScenePainter<'_> {
             }
             StyleRef::Stroke(stroke) => {
                 self.scene.set_stroke(stroke.clone());
-                self.scene
+                let _ = self
+                    .scene
                     .glyph_run(self.image_manager.resources, font)
                     .font_size(font_size)
                     .hint(hint)
@@ -236,7 +246,8 @@ impl PaintScene for WebGlScenePainter<'_> {
     ) {
         self.scene.set_transform(transform);
         self.scene.set_paint(PaintType::Solid(color));
+        self.scene.reset_paint_transform();
         self.scene
-            .fill_blurred_rounded_rect(&rect, radius as f32, std_dev as f32);
+            .fill_blurred_rounded_rect(&rect, radius as f32, std_dev as f32, false);
     }
 }

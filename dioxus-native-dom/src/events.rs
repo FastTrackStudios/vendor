@@ -1,4 +1,7 @@
-use blitz_dom::{BaseDocument, Node};
+use blitz_dom::{
+    BaseDocument, Node, ScrollBehavior as BlitzScrollBehavior,
+    ScrollLogicalPosition as BlitzScrollLogicalPosition,
+};
 use blitz_traits::events::{
     BlitzKeyEvent, BlitzPointerEvent, BlitzPointerId, BlitzScrollEvent, BlitzWheelDelta,
     BlitzWheelEvent, MouseEventButton,
@@ -9,8 +12,8 @@ use dioxus_html::{
     HasMouseData, HasPointerData, HasScrollData, HasTouchData, HasTouchPointData, HasWheelData,
     HtmlEventConverter, ImageData, KeyboardData, MediaData, MountedData, MountedError,
     MountedResult, MouseData, PlatformEventData, PointerData, RenderedElementBacking, ResizeData,
-    ScrollBehavior, ScrollData, ScrollToOptions, SelectionData, ToggleData, TouchData, TouchPoint,
-    TransitionData, VisibleData, WheelData,
+    ScrollBehavior, ScrollData, ScrollLogicalPosition, ScrollToOptions, SelectionData, ToggleData,
+    TouchData, TouchPoint, TransitionData, VisibleData, WheelData,
     geometry::{
         ClientPoint, ElementPoint, PagePoint, PixelsRect, PixelsSize, PixelsVector2D, ScreenPoint,
         WheelDelta,
@@ -217,17 +220,18 @@ impl RenderedElementBacking for NodeHandle {
         self
     }
 
-    // FTS: like `get_client_rect` — a handle can outlive its node (a panel
-    // unmounted since it was mounted) and the document can be busy; both
-    // are an error to report, never a panic.
+    // FTS: a handle can outlive its node (a panel unmounted since it was
+    // mounted) and the document can be busy; both are an error to report,
+    // never a panic.
     fn get_scroll_offset(&self) -> Pin<Box<dyn Future<Output = MountedResult<PixelsVector2D>>>> {
         let Ok(doc) = self.doc.try_borrow() else {
             return self.doc_busy_err();
         };
-        let Some(node) = doc.get_node(self.node_id) else {
+        let Some(scroll_offset) = doc.get_node(self.node_id).map(|node| *node.scroll_offset())
+        else {
+            drop(doc);
             return self.node_not_exist_err();
         };
-        let scroll_offset = node.scroll_offset;
         Box::pin(async move { Ok(PixelsVector2D::new(scroll_offset.x, scroll_offset.y)) })
     }
 
@@ -236,28 +240,26 @@ impl RenderedElementBacking for NodeHandle {
             return self.doc_busy_err();
         };
         let Some(node) = doc.get_node(self.node_id) else {
+            drop(doc);
             return self.node_not_exist_err();
         };
-        let scroll_width = node.final_layout.scroll_width() as f64;
-        let scroll_height = node.final_layout.scroll_height() as f64;
+        let scroll_width = node.final_layout().scroll_width() as f64;
+        let scroll_height = node.final_layout().scroll_height() as f64;
         Box::pin(async move { Ok(PixelsSize::new(scroll_width, scroll_height)) })
     }
 
     fn get_client_rect(&self) -> Pin<Box<dyn Future<Output = MountedResult<PixelsRect>>>> {
-        // `try_borrow_mut`, not `borrow_mut`.
-        //
-        // A caller measuring from a background task cannot know whether
-        // the document is already borrowed — it usually is, because event
-        // handling and rendering both hold it — and an unconditional
-        // borrow turns "ask me later" into "RefCell already borrowed" and
-        // takes the window with it. That is the same re-entrancy the
-        // sizing notes in expression-editor-ui warn about (#167). A
+        // FTS: `try_borrow`, not `borrow`. A caller measuring from a
+        // background task cannot know whether the document is already
+        // borrowed, and an unconditional borrow turns "ask me later" into
+        // "RefCell already borrowed" and takes the window with it. A
         // measurement is always safe to skip and retry, so report it as
         // failed and let the caller ask again.
-        let Ok(mut doc) = self.doc.try_borrow_mut() else {
+        let Ok(doc) = self.doc.try_borrow() else {
             return self.doc_busy_err();
         };
         let Some(bounding_rect) = doc.get_client_bounding_rect(self.node_id) else {
+            drop(doc);
             return self.node_not_exist_err();
         };
         drop(doc);
@@ -268,29 +270,73 @@ impl RenderedElementBacking for NodeHandle {
         Box::pin(async move { Ok(pixels_rect) })
     }
 
+    /// Scroll the element into view (the backing for both `MountedData::scroll_to` and
+    /// `MountedData::scroll_to_with_options`).
     fn scroll_to(
         &self,
-        _options: ScrollToOptions,
+        options: ScrollToOptions,
     ) -> Pin<Box<dyn Future<Output = MountedResult<()>>>> {
-        Box::pin(async { Err(MountedError::NotSupported) })
+        let node_id = self.node_id;
+        let mut doc = self.doc_mut();
+        if doc.get_node(node_id).is_none() {
+            drop(doc);
+            return self.node_not_exist_err();
+        }
+
+        let behavior = match options.behavior {
+            ScrollBehavior::Smooth => BlitzScrollBehavior::Smooth,
+            ScrollBehavior::Instant => BlitzScrollBehavior::Instant,
+        };
+        let vertical = match options.vertical {
+            ScrollLogicalPosition::Start => BlitzScrollLogicalPosition::Start,
+            ScrollLogicalPosition::Center => BlitzScrollLogicalPosition::Center,
+            ScrollLogicalPosition::End => BlitzScrollLogicalPosition::End,
+            ScrollLogicalPosition::Nearest => BlitzScrollLogicalPosition::Nearest,
+        };
+        let horizontal = match options.horizontal {
+            ScrollLogicalPosition::Start => BlitzScrollLogicalPosition::Start,
+            ScrollLogicalPosition::Center => BlitzScrollLogicalPosition::Center,
+            ScrollLogicalPosition::End => BlitzScrollLogicalPosition::End,
+            ScrollLogicalPosition::Nearest => BlitzScrollLogicalPosition::Nearest,
+        };
+        doc.scroll_into_view(node_id, behavior, vertical, horizontal);
+
+        Box::pin(async { Ok(()) })
     }
 
+    /// Scroll the element's own content to the given offset (the backing for
+    /// `MountedData::scroll`). The offset is clamped to the element's scrollable range.
     fn scroll(
         &self,
-        _coordinates: PixelsVector2D,
-        _behavior: ScrollBehavior,
+        coordinates: PixelsVector2D,
+        behavior: ScrollBehavior,
     ) -> Pin<Box<dyn Future<Output = MountedResult<()>>>> {
-        Box::pin(async { Err(MountedError::NotSupported) })
+        let node_id = self.node_id;
+        let mut doc = self.doc_mut();
+        if doc.get_node(node_id).is_none() {
+            drop(doc);
+            return self.node_not_exist_err();
+        }
+
+        doc.scroll_to(
+            node_id,
+            coordinates.x,
+            coordinates.y,
+            match behavior {
+                ScrollBehavior::Smooth => BlitzScrollBehavior::Smooth,
+                ScrollBehavior::Instant => BlitzScrollBehavior::Instant,
+            },
+        );
+
+        Box::pin(async { Ok(()) })
     }
 
     fn set_focus(&self, focus: bool) -> Pin<Box<dyn Future<Output = MountedResult<()>>>> {
-        // FTS: never borrow a document someone else has. It used to borrow
-        // mutably on the spot, which panicked ("RefCell already borrowed")
-        // when a task asked for focus while the document was busy; a retry
-        // loop in its place then spun forever, because tasks are polled
-        // with the document borrowed. So: apply it now if the document is
-        // free, else park it for `DioxusDocument` to apply the next time
-        // it holds the document (`apply_pending_focus`).
+        // FTS: never borrow a document someone else has. A mutable borrow on
+        // the spot panicked ("RefCell already borrowed") when a task asked for
+        // focus while the document was busy. So: apply it now if the document
+        // is free, else park it for `DioxusDocument` to apply the next time it
+        // holds the document (`apply_pending_focus`).
         match self.doc.try_borrow_mut() {
             Ok(mut doc) => apply_focus(&mut doc, self.node_id, focus),
             Err(_) => PENDING_FOCUS.with(|p| *p.borrow_mut() = Some((self.node_id, focus))),
@@ -657,6 +703,16 @@ pub fn synthetic_click_event(node: &Node, modifiers: Modifiers) -> Box<dyn Any> 
     ))
 }
 
+pub fn synthetic_form_event(
+    value: impl Into<String>,
+    values: impl Into<Vec<(String, FormValue)>>,
+) -> Box<dyn Any> {
+    Box::new(NativeFormData {
+        value: value.into(),
+        values: values.into(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -733,8 +789,8 @@ mod tests {
 }
 
 thread_local! {
-    /// A focus change asked for while the document was borrowed: the node,
-    /// and whether it gains or loses focus. The last one asked wins.
+    /// FTS: a focus change asked for while the document was borrowed: the
+    /// node, and whether it gains or loses focus. The last one asked wins.
     static PENDING_FOCUS: std::cell::RefCell<Option<(NodeId, bool)>> =
         const { std::cell::RefCell::new(None) };
 }

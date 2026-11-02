@@ -1,26 +1,26 @@
-Source: DioxusLabs/dioxus, revision f717a8e184a522d078b70bb4b4d62a5f9a99ddfc,
-packages/native-dom (0.8.0-alpha.0). Workspace dependency declarations are expanded
-without changing their versions. License: MIT OR Apache-2.0.
+Source: DioxusLabs/dioxus, revision 430cfb563f1b70602ef387f0c80f171d84527b41,
+packages/native-dom (0.8.0-alpha.3). Workspace dependency declarations are
+expanded without changing their versions. License: MIT OR Apache-2.0.
 
-Session's combined workstation DOM stress exposed stale ElementId-to-NodeId
-mappings after subtree removal. Blitz reuses numeric slab IDs. assign_node_id's
-cleanup of an old unparented mapping could therefore delete a fresh template
-clone, then panic in node_at_path. Clear mappings for removed/replaced subtrees
-before immediately dropping the removed subtree, using a reverse map to avoid scanning the whole document.
-Queued mount events skip elements removed before delivery.
+FTS changes, carried across upgrades:
 
-Remove this patch after upgrading to an upstream version with equivalent mapping
-lifetime guarantees. Regression coverage lives in Session's DOM stress harness
-and the native mutation writer unit tests.
+- `text_input_focused()` / `on_text_focus_change(f)` (`src/text_focus.rs`):
+  each document counts itself in while its focused node is a text input,
+  re-checked after every poll and UI event, so an app's global hotkeys can
+  stand aside while text is typed — in every window, plugin editor and
+  embedded panel. Not upstream.
+- `set_focus` parks a focus change while the document is borrowed
+  (`PENDING_FOCUS`, `apply_pending_focus`), applied at the next poll or UI
+  event.
+- `get_scroll_offset`, `get_scroll_size` and `get_client_rect` use
+  `try_borrow`, so a handle used while the document is busy reports an error
+  instead of panicking.
+- Queued mounted events skip an element removed before delivery
+  (`try_element_to_node_id`): upstream now clears a removed element's
+  mapping, so its `element_to_node_id` would panic there.
 
-FTS also adds `text_input_focused()` / `on_text_focus_change(f)`
-(`src/text_focus.rs`): each document counts itself in while its focused node
-is a text input, re-checked after every poll and UI event, so an app's
-global hotkeys can stand aside while text is typed — in every window, plugin
-editor and embedded panel. Not upstream; carry it across upgrades.
-
-Also carried and not listed above: `set_focus` parks a focus change while the
-document is borrowed (`PENDING_FOCUS`, `apply_pending_focus`), and
-`get_scroll_offset`, `get_scroll_size` and `get_client_rect` use `try_borrow`,
-so a handle that outlives a busy document reports an error instead of
-panicking.
+Dropped at this rev: the ElementId→NodeId mapping cleanup for removed
+subtrees (`forget_subtree`, `node_to_element`). Upstream rewrote the mutation
+writer as a stack machine over buffered mutations (#5911, #5943): there is no
+`assign_node_id` cleanup any more to delete a fresh template clone that
+reuses a removed node's slab id, which is what the fix guarded.
