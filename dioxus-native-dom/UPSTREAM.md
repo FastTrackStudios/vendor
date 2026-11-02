@@ -15,6 +15,11 @@ FTS changes, carried across upgrades:
 - `get_scroll_offset`, `get_scroll_size` and `get_client_rect` use
   `try_borrow`, so a handle used while the document is busy reports an error
   instead of panicking.
+- IME composition (`composition_event`, `NativeCompositionData`): Blitz's
+  `Ime` event reaches Dioxus as `compositionupdate` (the preedit; empty when
+  cleared) and `compositionend` (the committed text) instead of being
+  dropped, so a focusable element that does its own editing (with the FTS
+  Blitz fork's `inputmode` IME opt-in) can compose. Not upstream.
 - Queued mounted events skip an element removed before delivery
   (`try_element_to_node_id`): upstream now clears a removed element's
   mapping, so its `element_to_node_id` would panic there.

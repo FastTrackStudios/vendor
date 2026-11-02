@@ -1,8 +1,8 @@
 //! Integration between Dioxus and Blitz
 use crate::NodeId;
 use crate::events::{
-    BlitzKeyboardData, NativeConverter, NativeFocusData, NativeFormData, NativePointerData,
-    NativeScrollData, NativeTouchData, NativeWheelData, NodeHandle,
+    BlitzKeyboardData, NativeCompositionData, NativeConverter, NativeFocusData, NativeFormData,
+    NativePointerData, NativeScrollData, NativeTouchData, NativeWheelData, NodeHandle,
 };
 use crate::mutation_writer::DioxusState;
 use crate::qual_name;
@@ -10,7 +10,7 @@ use blitz_dom::{
     Attribute, BaseDocument, DocGuard, DocGuardMut, Document, DocumentConfig, EventDriver,
     EventHandler, Node,
 };
-use blitz_traits::events::{DomEvent, DomEventData, EventState, UiEvent};
+use blitz_traits::events::{BlitzImeEvent, DomEvent, DomEventData, EventState, UiEvent};
 use dioxus_html::{PlatformEventData, set_event_converter};
 use dioxus_vdom::{ElementId, Event, VirtualDom};
 use futures_util::task::noop_waker;
@@ -362,8 +362,11 @@ impl EventHandler for DioxusEventHandler<'_> {
                 values: vec![],
             })),
 
-            // TODO: Implement IME handling
-            DomEventData::Ime(_) => None,
+            // FTS: IME composition. Blitz names the event `composition`;
+            // a Dioxus listener names the phase, so the name is set below.
+            DomEventData::Ime(ime) => {
+                composition_event(ime).map(|(_, data)| wrap_event_data(NativeCompositionData(data)))
+            }
 
             // AppleStandardKeybinding events are not exposed to script
             DomEventData::AppleStandardKeybinding(_) => None,
@@ -383,9 +386,11 @@ impl EventHandler for DioxusEventHandler<'_> {
 
         // Handle event in vdom
         let dx_event = Event::new(event_data.clone(), event.bubbles);
-        self.vdom
-            .runtime()
-            .handle_event(event.name(), dx_event.clone(), id);
+        let name = match &event.data {
+            DomEventData::Ime(ime) => composition_event(ime).map_or("composition", |(n, _)| n),
+            _ => event.name(),
+        };
+        self.vdom.runtime().handle_event(name, dx_event.clone(), id);
 
         // Update event state
         if !dx_event.default_action_enabled() {
@@ -394,6 +399,21 @@ impl EventHandler for DioxusEventHandler<'_> {
         if !dx_event.propagates() {
             event_state.stop_propagation();
         }
+    }
+}
+
+/// The Dioxus composition event an IME event is delivered as, and its
+/// `data`. A preedit (the text being composed; empty when it is cleared,
+/// both on cancel and just before a commit) is `compositionupdate`; a commit
+/// is `compositionend` carrying the committed text. Enable/disable and
+/// surrounding-text deletion have no composition event.
+fn composition_event(ime: &BlitzImeEvent) -> Option<(&'static str, String)> {
+    match ime {
+        BlitzImeEvent::Preedit(text, _) => Some(("compositionupdate", text.clone())),
+        BlitzImeEvent::Commit(text) => Some(("compositionend", text.clone())),
+        BlitzImeEvent::Enabled
+        | BlitzImeEvent::Disabled
+        | BlitzImeEvent::DeleteSurrounding { .. } => None,
     }
 }
 
