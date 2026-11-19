@@ -32,6 +32,8 @@ from that release's published source and re-apply the fix; the fleet
 | `winit-uikit` | [rust-windowing/winit](https://github.com/rust-windowing/winit) | `0.31.0-beta.2` | proxy wake-up drains events queued during it (studio) |
 | `branches` | [fereidani/branches](https://github.com/fereidani/branches) | `0.4.6` | its nightly path uses `core::intrinsics` items current nightlies dropped (studio) |
 | `world-sys` (`world/`) | [mmorise/World](https://github.com/mmorise/World) | — | the WORLD vocoder, BSD-3-Clause (studio) |
+| `dioxus-test` | [DioxusLabs/dioxus-test](https://github.com/DioxusLabs/dioxus-test) | — | headless component tests on blitz-dom, on the dioxus 0.8 / blitz beta.4 pins, with keyboard and screenshot extensions (studio) |
+| `facet-swift` | [facet-rs/facet](https://github.com/facet-rs/facet) | tag `vox-v0.10.0-rc.5` | the phon/vox Swift runtime, not published as a package; a Swift package, no Cargo crate (studio's watchOS remote) |
 
 Each of the crates marked (studio) carries its own `UPSTREAM.md` or
 `FTS-PATCH.md` with the full story. They moved here from studio's
