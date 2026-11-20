@@ -315,6 +315,12 @@ impl WindowRenderer for VelloWindowRenderer {
         self.render_state = RenderState::Pending { receiver };
         self.window_handle = Some(window_handle.clone());
 
+        // FTS: in a browser, a wgpu built with `fragile-send-sync-non-atomic-wasm`
+        // (Bevy turns it on, and one wgpu is shared by every crate of a build)
+        // wants a `Send + Sync` window handle, which anyrender's is not on
+        // wasm. A browser's page has one thread: the wrapper is sound there.
+        #[cfg(target_arch = "wasm32")]
+        let window_handle = WasmHandle(window_handle);
         let surface = self
             .wgpu_context
             .create_surface(window_handle)
@@ -677,5 +683,31 @@ impl WindowRenderer for VelloWindowRenderer {
 
         timer.record_time("wait");
         timer.print_times("vello: ");
+    }
+}
+
+/// FTS: a window handle wgpu takes in a browser whatever its
+/// `fragile-send-sync-non-atomic-wasm` feature asks (see `resume`).
+#[cfg(target_arch = "wasm32")]
+struct WasmHandle(Arc<dyn WindowHandle>);
+
+// SAFETY: wasm32 here is a browser page's single thread; nothing of the
+// handle crosses a thread.
+#[cfg(target_arch = "wasm32")]
+unsafe impl Send for WasmHandle {}
+#[cfg(target_arch = "wasm32")]
+unsafe impl Sync for WasmHandle {}
+
+#[cfg(target_arch = "wasm32")]
+impl wgpu::rwh::HasWindowHandle for WasmHandle {
+    fn window_handle(&self) -> Result<wgpu::rwh::WindowHandle<'_>, wgpu::rwh::HandleError> {
+        self.0.window_handle()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl wgpu::rwh::HasDisplayHandle for WasmHandle {
+    fn display_handle(&self) -> Result<wgpu::rwh::DisplayHandle<'_>, wgpu::rwh::HandleError> {
+        self.0.display_handle()
     }
 }
